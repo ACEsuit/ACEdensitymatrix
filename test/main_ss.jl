@@ -13,9 +13,10 @@ D11_ss = get_block(D,1,1,frame["Basis set labels"],0,0,1,1)
 
 Rs = []
 Ys = []
-N_data = 10000
+N_data = 2000
+i = 1
 
-for i = 1:5:N_data
+while length(Rs) < N_data
     frame = read_frame(molecule,i)
     @assert frame["Atomic numbers"][1] == 6.0
     R, D = translate_frame(frame)
@@ -23,6 +24,7 @@ for i = 1:5:N_data
     D11_ss = get_block(D,1,1,frame["Basis set labels"],0,0,1,3)[1]
     push!(Rs, R11)
     push!(Ys, D11_ss)
+    i += 5
 end
 
 Rs
@@ -31,6 +33,7 @@ Y = Ys |> Vector{Float64}
 Y .- mean(Y) |> norm
 
 # model construction
+# parameters 
 maxdeg = 6
 ord = 3
 rcut = 10.0
@@ -38,6 +41,7 @@ radial = onsite_radial(maxdeg, rcut)
 Zi = 6
 Zs = [6,1,8]
 Lmax = 0
+# construct the basis
 basis = onsite_basis(maxdeg, ord, radial, Zi, Zs, Lmax; islong = false)
 
 # model training
@@ -57,8 +61,9 @@ A * C - Y  |> norm
 
 Rt = []
 Yt = []
+i = 5
 
-for i = 5:10:N_data
+while length(Rt) < N_data
     frame = read_frame(molecule,i)
     @assert frame["Atomic numbers"][1] == 6.0
     R, D = translate_frame(frame)
@@ -66,6 +71,7 @@ for i = 5:10:N_data
     D11_ss = get_block(D,1,1,frame["Basis set labels"],0,0,1,3)[1]
     push!(Rt, R11)
     push!(Yt, D11_ss)
+    i += 5
 end
 
 At = zeros(length(Rt), l_basis)
@@ -77,7 +83,7 @@ end
 At * C - Yt |> norm
 Yt .- mean(Yt) |> norm
 
-# plot and other comparison
+# plot and other comparisons
 plot(Yt, Yt)
 scatter!(Y, A * C, label = "Training")
 scatter!(Yt, At * C, label = "Testing")
