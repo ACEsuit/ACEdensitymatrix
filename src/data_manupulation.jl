@@ -1,4 +1,4 @@
-using DecoratedParticles
+using DecoratedParticles, StaticArrays
 
 include("../src/utils/hdf5.jl")
 include("../src/utils/reorder.jl")
@@ -25,7 +25,7 @@ function get_state(R,I,J)
     if I == J
         # Onsite local environment
         @assert I <= length(R)
-        return [State(rr = R[K].rr - R[I].rr, ZK = R[K].Z, ZI = R[I].Z) for K in setdiff(1:length(R), [I])]
+        return [State(rr = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z) for J in setdiff(1:length(R), [I])]
     else
         # Offsite local environment - we have several options and here comes just one of them
         # TODO: Implement the other options
