@@ -1,6 +1,6 @@
 using LinearAlgebra
 
-include("../src/utils/wigner.jl")
+include("wigner.jl")
 include("../src/utils/hdf5.jl")
 include("../src/utils/reorder.jl")
 include("../src/utils/transformations.jl")
