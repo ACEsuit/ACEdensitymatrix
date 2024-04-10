@@ -1,4 +1,4 @@
-using DecoratedParticles, StaticArrays
+using DecoratedParticles, StaticArrays, LinearAlgebra
 
 include("../src/utils/hdf5.jl")
 include("../src/utils/reorder.jl")
@@ -71,4 +71,29 @@ function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Vector{String
     pos_L2 = findall(x->x==L2, ls[pos_J])
 
     return D[pos_I, pos_J][pos_L1, pos_L2]
+end
+
+function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Vector{String},L1::Int64,L2::Int64,μ1::Int64,μ2::Int64)
+    # Get the block of the density matrix
+    # I,J are the indices of the atoms
+    # L1,L2 are the angular momentum indices
+    # μ1,μ2 are the indices for the (L1,L2) blocks
+    # ao_labels are the labels of the basis set
+ 
+    # first assure that the ao_labels are in the correct order
+    ao_labels = apply_reorder(ao_labels)
+
+    atom_ids, atom_symbols, shells, ls, ms = unpack(ao_labels)
+    atom_ids .+= 1
+
+    pos_I = findall(x->x==I, atom_ids)
+    pos_J = findall(x->x==J, atom_ids)
+
+    pos_L1 = findall(x->x==L1, ls[pos_I])
+    pos_L2 = findall(x->x==L2, ls[pos_J])
+
+    pos_μ1 = 1+(μ1-1)*(2L1+1):2L1+1+(μ1-1)*(2L1+1)
+    pos_μ2 = 1+(μ2-1)*(2L2+1):2L2+1+(μ2-1)*(2L2+1)
+
+    return D[pos_I, pos_J][pos_L1, pos_L2][pos_μ1, pos_μ2]
 end

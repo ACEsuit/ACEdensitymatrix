@@ -15,8 +15,8 @@ function onsite_basis(maxdeg::Int64, ord::Int64, radial::Radial_basis, Zi::Int64
     return F
 end
 
-function onsite_cutoff(rcut::Float64)
-    fcut(rcut::Float64,pin::Int=2,pout::Int=2) = r -> (r < rcut ? abs( (r/rcut)^pin - 1)^pout : 0)
-    ftrans(r0::Float64=2.0,p::Int=2) = r -> ( (1+r0)/(1+r) )^p
-    return EquivariantModels.simple_radial_basis(legendre_basis(totdeg),fcut(rcut),ftrans())
+function onsite_radial(maxdeg::Int64,rcut::Float64; pin::Int=2, pout::Int=2, r0::Float64=2.0, p::Int=2)
+    fcut(rcut::Float64,pin::Int=pin,pout::Int=pout) = r -> (r < rcut ? abs( (r/rcut)^pin - 1)^pout : 0)
+    ftrans(r0::Float64=r0,p::Int=p) = r -> ( (1+r0)/(1+r) )^p
+    return EquivariantModels.simple_radial_basis(legendre_basis(maxdeg),fcut(rcut),ftrans())
 end
