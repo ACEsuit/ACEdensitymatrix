@@ -1,4 +1,4 @@
-using Statistics
+using Statistics, Plots
 
 include("../src/data_manupulation.jl")
 include("../src/model_construction.jl")
@@ -15,12 +15,12 @@ Rs = []
 Ys = []
 N_data = 10000
 
-for i = 1:10:N_data
+for i = 1:5:N_data
     frame = read_frame(molecule,i)
     @assert frame["Atomic numbers"][1] == 6.0
     R, D = translate_frame(frame)
     R11 = get_state(R,1,1)
-    D11_ss = get_block(D,1,1,frame["Basis set labels"],0,0,2,3)[1]
+    D11_ss = get_block(D,1,1,frame["Basis set labels"],0,0,1,3)[1]
     push!(Rs, R11)
     push!(Ys, D11_ss)
 end
@@ -32,8 +32,8 @@ Y .- mean(Y) |> norm
 
 # model construction
 maxdeg = 6
-ord = 2
-rcut = 6.0
+ord = 3
+rcut = 10.0
 radial = onsite_radial(maxdeg, rcut)
 Zi = 6
 Zs = [6,1,8]
@@ -49,10 +49,7 @@ for i = 1:length(Rs)
     A[i,:] = real(basis(Rs[i]))
 end
 
-A
-
-C = qr(A) \ Y
-C = (A'*A + 1e-11I) \ (A'*Y)
+C = (A'*A + 1e-11I) \ (A'*Y) # naive solver - just for illustration
 
 A * C - Y  |> norm
 
@@ -61,12 +58,12 @@ A * C - Y  |> norm
 Rt = []
 Yt = []
 
-for i = 2:10:N_data
+for i = 5:10:N_data
     frame = read_frame(molecule,i)
     @assert frame["Atomic numbers"][1] == 6.0
     R, D = translate_frame(frame)
     R11 = get_state(R,1,1)
-    D11_ss = get_block(D,1,1,frame["Basis set labels"],0,0,2,3)[1]
+    D11_ss = get_block(D,1,1,frame["Basis set labels"],0,0,1,3)[1]
     push!(Rt, R11)
     push!(Yt, D11_ss)
 end
@@ -80,4 +77,12 @@ end
 At * C - Yt |> norm
 Yt .- mean(Yt) |> norm
 
-molecule
+# plot and other comparison
+plot(Yt, Yt)
+scatter!(Y, A * C, label = "Training")
+scatter!(Yt, At * C, label = "Testing")
+
+
+e = A * C - Y |> maximum
+
+abs.((A * C - Y) ./ Y) |> maximum  # error ~ 0.2% - 1%
