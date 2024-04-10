@@ -1,8 +1,9 @@
-using LinearAlgebra, ACE
+using LinearAlgebra
 
-include("../utils/hdf5.jl")
-include("../utils/reorder.jl")
-include("../utils/transformations.jl")
+include("../src/utils/wigner.jl")
+include("../src/utils/hdf5.jl")
+include("../src/utils/reorder.jl")
+include("../src/utils/transformations.jl")
 molecule = TrajectoryHDF5("data/rotation_test.h5")
 
 frame = read_frame(molecule,9999)
@@ -53,8 +54,8 @@ for L1 in 0:Lmax
     for L2 in 0:Lmax
         T = ctran(L1)
         T2 = ctran(L2)
-        W = ACE.Wigner.wigner_D(L1,Sign * Q) # Wigner_D matrix in the ACE (complex SHs) context
-        W2 = ACE.Wigner.wigner_D(L2,Sign * Q) 
+        W = wigner_D(L1,Sign * Q) # Wigner_D matrix in the ACE (complex SHs) context
+        W2 = wigner_D(L2,Sign * Q) 
         W_new = T * W * T' # Wigner_D matrix in the real SHs context
         W2_new = T2 * W2 * T2'
         for i = 1:n_orb[L1+1]
