@@ -21,7 +21,7 @@ while length(Rs) < N_data
     @assert frame["Atomic numbers"][1] == 6.0
     R, D = translate_frame(frame)
     R11 = get_state(R,1,1)
-    D11_ss = get_block(D,1,1,frame["Basis set labels"],0,0,1,3)[1]
+    D11_ss = get_block(D,1,1,frame["Basis set labels"],0,0,1,2)[1]
     push!(Rs, R11)
     push!(Ys, D11_ss)
     i += 5
@@ -34,7 +34,7 @@ Y .- mean(Y) |> norm
 
 # model construction
 # parameters 
-maxdeg = 6
+maxdeg = 8
 ord = 3
 rcut = 10.0
 radial = onsite_radial(maxdeg, rcut)
@@ -53,7 +53,10 @@ for i = 1:length(Rs)
     A[i,:] = real(basis(Rs[i]))
 end
 
-C = (A'*A + 1e-11I) \ (A'*Y) # naive solver - just for illustration
+Γ = I
+λ = 1e-12
+# C = (A'*A + λ*Γ) \ (A'*Y) # naive solver - just for illustration
+C = qr([A; λ*Γ]) \ [Y; zeros(Float64,size(A,2))] # another naive solver
 
 A * C - Y  |> norm
 
@@ -61,14 +64,14 @@ A * C - Y  |> norm
 
 Rt = []
 Yt = []
-i = 5
+i = 2
 
 while length(Rt) < N_data
     frame = read_frame(molecule,i)
     @assert frame["Atomic numbers"][1] == 6.0
     R, D = translate_frame(frame)
     R11 = get_state(R,1,1)
-    D11_ss = get_block(D,1,1,frame["Basis set labels"],0,0,1,3)[1]
+    D11_ss = get_block(D,1,1,frame["Basis set labels"],0,0,1,2)[1]
     push!(Rt, R11)
     push!(Yt, D11_ss)
     i += 5
@@ -92,3 +95,9 @@ scatter!(Yt, At * C, label = "Testing")
 e = A * C - Y |> maximum
 
 abs.((A * C - Y) ./ Y) |> maximum  # error ~ 0.2% - 1%
+abs.((At * C - Yt) ./ Yt) |> maximum  # error ~ 0.2% - 1%
+
+train_pred = A * C
+test_pred = At * C
+train_exact = Y
+test_exact = Yt

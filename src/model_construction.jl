@@ -1,6 +1,19 @@
 using EquivariantModels, Polynomials4ML
 using EquivariantModels: simple_radial_basis, Radial_basis
 
+## Temporal fix for an utils function in EquivariantModels
+import EquivariantModels: specnlm2spec1p
+function specnlm2spec1p(spec_nlm)
+    spec1p = []
+    for spec_nlm_i in spec_nlm
+        push!(spec1p, spec_nlm_i...)
+        unique!(spec1p)
+    end
+    lmax = [ spec1p[i].l for i = 1:length(spec1p) ] |> maximum
+    nmax = [ spec1p[i].n for i = 1:length(spec1p) ] |> maximum
+    return spec1p, lmax, nmax + 1
+end
+
 function onsite_basis(maxdeg::Int64, ord::Int64, radial::Radial_basis, Zi::Int64, Zs::Vector{Int64}, Lmax::Int64; islong = false)
     cats_ext = [(Zi,Z) for Z in Zs] |> unique
     Aspec, AAspec = degord2spec(radial; totaldegree = maxdeg, 

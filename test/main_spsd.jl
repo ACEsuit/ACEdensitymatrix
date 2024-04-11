@@ -39,8 +39,8 @@ Y |> norm
 
 # model construction
 # parameters 
-maxdeg = 4
-ord = 3
+maxdeg = 12
+ord = 2
 rcut = 10.0
 radial = onsite_radial(maxdeg, rcut)
 Zi = 6
@@ -67,7 +67,10 @@ for i = 1:length(Rs)
     A[(i-1)*length(Ys[1])+1:i*length(Ys[1]),:] = flat(Ref(ctran(Lmax)) .* basis(Rs[i]))    
 end
 
-C = (A'*A + 1e-11I) \ (A'*Y) # naive solver - just for illustration
+Γ = I
+λ = 1e-12
+# C = (A'*A + λ*Γ) \ (A'*Y) # naive solver - just for illustration
+C = qr([A; λ*Γ]) \ [Y; zeros(Float64,size(A,2))] # another naive solver
 
 A * C - Y  |> norm
 norm(Y)
@@ -107,7 +110,12 @@ scatter!(Y, A * C, label = "Training")
 scatter!(YY, At * C, label = "Testing")
 
 
-e = A * C - Y |> maximum
+e = At * C - YY |> maximum
+
+append!(train_exact, Y)
+append!(train_pred, A * C)
+append!(test_exact, YY)
+append!(test_pred, At * C)
 
 ## sd? 
 D11_sd = get_block(D,1,1,frame["Basis set labels"],0,2,2,1)
@@ -139,9 +147,9 @@ Y |> norm
 
 # model construction
 # parameters 
-maxdeg = 6
+maxdeg = 12
 ord = 2
-rcut = 10.0
+rcut = 5.0
 radial = onsite_radial(maxdeg, rcut)
 Zi = 6
 Zs = [6,1,8]
@@ -158,7 +166,10 @@ for i = 1:length(Rs)
     A[(i-1)*length(Ys[1])+1:i*length(Ys[1]),:] = flat(Ref(ctran(Lmax)) .* basis(Rs[i]))    
 end
 
-C = (A'*A + 1e-11I) \ (A'*Y) # naive solver - just for illustration
+Γ = I
+λ = 1e-12
+# C = (A'*A + λ*Γ) \ (A'*Y) # naive solver - just for illustration
+C = qr([A; λ*Γ]) \ [Y; zeros(Float64,size(A,2))] # another naive solver
 
 A * C - Y  |> norm
 norm(Y)
@@ -199,3 +210,12 @@ scatter!(YY, At * C, label = "Testing")
 
 
 e = A * C - Y |> maximum
+
+append!(train_exact, Y)
+append!(train_pred, A * C)
+append!(test_exact, YY)
+append!(test_pred, At * C)
+
+plot(train_exact, train_exact)
+scatter!(train_exact, train_pred, label = "Training")
+scatter!(test_exact, test_pred, label = "Testing")
