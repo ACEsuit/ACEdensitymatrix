@@ -141,9 +141,8 @@ function equivariant_model_loc(spec_nlm, radial::Radial_basis, L::Int64; categor
         cgen = Rot3DCoeffs_loc(l1,l2) # TODO: this should be made group related
  
         tmp = spec_nlm[findall(x -> filter(x) == 1, spec_nlm)]
-        @show length(tmp)
+        
         C[l] = _rpi_A2B_matrix(cgen, tmp)
-        @show size(C[l],1)
         pos[l] = findall(x -> filter(x) == 1, spec_nlm) # [ dict[tmp[j]] for j = 1:length(tmp)]
     end
 
