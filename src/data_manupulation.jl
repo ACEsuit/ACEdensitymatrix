@@ -35,7 +35,7 @@ function get_state(R,I,J)
     end
 end
 
-function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Vector{String})
+function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Union{Vector{String},Matrix{String}})
     # Get the block of the density matrix
     # I,J are the indices of the atoms
     # ao_labels are the labels of the basis set
@@ -52,7 +52,7 @@ function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Vector{String
     return D[pos_I, pos_J]
 end
 
-function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Vector{String},L1::Int64,L2::Int64)
+function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Union{Vector{String},Matrix{String}},L1::Int64,L2::Int64)
     # Get the block of the density matrix
     # I,J are the indices of the atoms
     # L1,L2 are the angular momentum indices
@@ -73,7 +73,7 @@ function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Vector{String
     return D[pos_I, pos_J][pos_L1, pos_L2]
 end
 
-function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Vector{String},L1::Int64,L2::Int64,μ1::Int64,μ2::Int64)
+function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Union{Vector{String},Matrix{String}},L1::Int64,L2::Int64,μ1::Int64,μ2::Int64)
     # Get the block of the density matrix
     # I,J are the indices of the atoms
     # L1,L2 are the angular momentum indices

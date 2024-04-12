@@ -1,4 +1,4 @@
-function unpack(ao_labels::Vector{String})
+function unpack(ao_labels::Union{Vector{String},Matrix{String}})
     atom_ids = Int64[]
     atom_symbols = String[]
     shells = Int64[]
@@ -24,11 +24,13 @@ function unpack(ao_labels::Vector{String})
 end
 
 
-function apply_reorder(ao_labels::Vector{String}, matrix::Matrix{Float64};
+function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}, matrix::Matrix{Float64};
         inverse=false, debug=false)
 
+    pos = typeof(ao_labels) == Vector{String} ? 1 : 2
+
     # keep a copy of the reordering for debug
-    ref_order = Vector{Int64}(1:size(ao_labels, 1))
+    ref_order = Vector{Int64}(1:size(ao_labels, pos))
 
     # unpack the labels
     atom_ids, atom_symbols, shells, ls, ms = unpack(ao_labels)
@@ -101,9 +103,11 @@ function apply_reorder(ao_labels::Vector{String}, matrix::Matrix{Float64};
     return rotated_matrix
 end
 
-function apply_reorder(ao_labels::Vector{String})
+function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}})
+
+    pos = typeof(ao_labels) == Vector{String} ? 1 : 2
     # keep a copy of the reordering for debug
-    ref_order = Vector{Int64}(1:size(ao_labels, 1))
+    ref_order = Vector{Int64}(1:size(ao_labels, pos))
 
     # unpack the labels
     atom_ids, atom_symbols, shells, ls, ms = unpack(ao_labels)
