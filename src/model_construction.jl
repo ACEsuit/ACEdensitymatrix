@@ -1,30 +1,24 @@
-using EquivariantModels, Polynomials4ML
-using EquivariantModels: simple_radial_basis, Radial_basis
+using EquivariantModels, Polynomials4ML, Lux, Random
+using EquivariantModels: simple_radial_basis, Radial_basis, append_layer
 
-## Temporal fix for an utils function in EquivariantModels
-import EquivariantModels: specnlm2spec1p
-function specnlm2spec1p(spec_nlm)
-    spec1p = []
-    for spec_nlm_i in spec_nlm
-        push!(spec1p, spec_nlm_i...)
-        unique!(spec1p)
-    end
-    lmax = [ spec1p[i].l for i = 1:length(spec1p) ] |> maximum
-    nmax = [ spec1p[i].n for i = 1:length(spec1p) ] |> maximum
-    return spec1p, lmax, nmax + 1
-end
+include("utils/transformations.jl")
+include("utils/extended_eqm.jl")
 
-function onsite_basis(maxdeg::Int64, ord::Int64, radial::Radial_basis, Zi::Int64, Zs::Vector{Int64}, Lmax::Int64; islong = false)
+function onsite_basis(maxdeg::Int64, ord::Int64, radial::Radial_basis, Zi::Int64, Zs::Vector{Int64}, Lmax::Int64)
     cats_ext = [(Zi,Z) for Z in Zs] |> unique
     Aspec, AAspec = degord2spec(radial; totaldegree = maxdeg, 
                                   order = ord, 
                                   Lmax = Lmax, catagories = cats_ext)
 
-    luxchain, ps, st = equivariant_model(AAspec, radial, Lmax; categories=cats_ext, isState = true, islong = islong)
+    xx2BB, ps, st, LLset = equivariant_model_loc(AAspec, radial, Lmax; categories=cats_ext, isState = true)
 
     #TODO: add one more LinearLayer to to complex to real transformation
+    l_c2r = Lux.Parallel(nothing, [WrappedFunction(x -> real.(Ref(ctran(l1)) .* x .* Ref(ctran(l2)'))) for (l1,l2) in LLset]... )
+    xx2BB = append_layer(xx2BB, l_c2r; l_name = :complex2real)
+    
+    ps, st = Lux.setup(MersenneTwister(1234), xx2BB)
 
-    F(X) = luxchain(X, ps, st)[1]
+    F(X) = xx2BB(X, ps, st)[1]
     return F
 end
 

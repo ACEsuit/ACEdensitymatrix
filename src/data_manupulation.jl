@@ -1,7 +1,7 @@
 using DecoratedParticles, StaticArrays, LinearAlgebra
 
-include("../src/utils/hdf5.jl")
-include("../src/utils/reorder.jl")
+include("utils/hdf5.jl")
+include("utils/reorder.jl")
 
 # translate a frame to a pair of data (R, D_R)
 function translate_frame(frame::Dict{String,Array})
