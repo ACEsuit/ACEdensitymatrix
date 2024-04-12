@@ -1,5 +1,5 @@
 using EquivariantModels: _get_cat_default,RPE_filter_long, closure, _linear_operator_L, _close, rpe_basis, _nlms2b, _gramian, LinearSearch, ConstLinearLayer, genmul!
-import EquivariantModels: _rpi_A2B_matrix, _valtype, rpe_basis
+import EquivariantModels: _rpi_A2B_matrix, _valtype, rpe_basis, RPE_filter
 
 ## Construct a new EQM that generates also tensorial basis
 _valtype(op::AbstractMatrix{<: AbstractMatrix}, x::AbstractArray{<: Number}) = SMatrix{size(op[1],1), size(op[1],2), promote_type(eltype(op[1]), eltype(x[1][1]))}
@@ -141,7 +141,7 @@ function equivariant_model_loc(spec_nlm, radial::Radial_basis, L::Int64; categor
         cgen = Rot3DCoeffs_loc(l1,l2) # TODO: this should be made group related
  
         tmp = spec_nlm[findall(x -> filter(x) == 1, spec_nlm)]
-        
+
         C[l] = _rpi_A2B_matrix(cgen, tmp)
         pos[l] = findall(x -> filter(x) == 1, spec_nlm) # [ dict[tmp[j]] for j = 1:length(tmp)]
     end
