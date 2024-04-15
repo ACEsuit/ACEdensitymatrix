@@ -17,26 +17,26 @@ function specnlm2spec1p(spec_nlm)
     return spec1p, lmax, nmax + 1
 end
 
-struct density_model
-    On_Models::Vector{On_Model}
-    Off_Models::Vector{Off_Model}
-    # fitted::Bool
-end
+abstract type AbstractPoly4MLBasis end
 
-struct AbstractModel; end
-
-struct On_Model<:AbstractModel
+struct On_Model <: AbstractModel
     model_on::Chain
     ps::NamedTuple
     st::NamedTuple
     fitted::Bool
 end
 
-struct Off_Model<:AbstractModel
+struct Off_Model <: AbstractModel
     model_off::Chain
     ps::NamedTuple
     st::NamedTuple
     fitted::Bool
+end
+
+struct density_model
+    On_Models::Vector{On_Model}
+    Off_Models::Vector{Off_Model}
+    # fitted::Bool
 end
 
 isfitted(model::AbstractModel) = model.fitted
