@@ -1,4 +1,5 @@
 using EquivariantModels: _get_cat_default,RPE_filter_long, closure, _linear_operator_L, _close, rpe_basis, _nlms2b, _gramian, LinearSearch, ConstLinearLayer, genmul!
+using Polynomials4ML: LinearLayer
 import EquivariantModels: _rpi_A2B_matrix, _valtype, rpe_basis, RPE_filter
 
 ## Construct a new EQM that generates also tensorial basis
@@ -116,7 +117,7 @@ function _rpi_A2B_matrix(cgen::Rot3DCoeffs_loc{L1,L2,T}, spec) where {L1,L2,T}
     return sparse(Irow, Jcol, vals, idxB, length(spec))
 end
 
-function equivariant_model_loc(spec_nlm, radial::Radial_basis, L::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true)
+function equivariant_model_loc(spec_nlm, radial::Radial_basis, L::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true)
     # if rSH && L > 0
     #    error("rSH is only implemented (for now) for L = 0")
     # end
@@ -149,18 +150,54 @@ function equivariant_model_loc(spec_nlm, radial::Radial_basis, L::Int64; categor
     l_sym = Lux.Parallel(nothing, [ConstLinearLayer(_linear_operator_loc(l1,l2,C[i],pos[i],length(spec_nlm))) for (i,(l1,l2)) in enumerate(LLset)]... )
     # C - A2Bmap
     luxchain = append_layer(luxchain, l_sym; l_name = :AA2BB)
-    
+
+    if isreal
+        l_c2r = Lux.Parallel(nothing, [WrappedFunction(x -> real.(Ref(ctran(l1)) .* x .* Ref(ctran(l2)'))) for (l1,l2) in LLset]... )
+        luxchain = append_layer(luxchain, l_c2r; l_name = :complex2real)
+    end
+
+    l_id = Lux.Parallel(nothing, [WrappedFunction(x -> identity.(x)) for i in 1:length(LLset)]... )
+    luxchain = append_layer(luxchain, l_id; l_name = :TypeStablization)
+
     ps, st = Lux.setup(MersenneTwister(1234), luxchain)
     
     return luxchain, ps, st, LLset
  end
  
  # more constructors equivariant_model
- equivariant_model_loc(totdeg::Int64, ν::Int64, radial::Radial_basis, L::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true) = 
-      equivariant_model_loc(degord2spec(radial; totaldegree = totdeg, order = ν, Lmax=L, islong = islong)[2], radial, L; categories, _get_cat, d, group, isState)
+ equivariant_model_loc(totdeg::Int64, ν::Int64, radial::Radial_basis, L::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true) = 
+      equivariant_model_loc(degord2spec(radial; totaldegree = totdeg, order = ν, Lmax=L, islong = islong)[2], radial, L; categories, _get_cat, d, group, isState, isreal)
  
  # With the _close function, the input could simply be an nnlllist (nlist,llist)
- equivariant_model_loc(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis, L::Int64; categories=[], _get_cat = _get_cat_default, d=3, group = "O3", isState = true) = begin
+ equivariant_model_loc(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis, L::Int64; categories=[], _get_cat = _get_cat_default, d=3, group = "O3", isState = true, isreal = true) = begin
     filter = RPE_filter_long(2*L)
-    equivariant_model_loc(_close(nn, ll; filter = filter), radial, L; categories, _get_cat, d, group, isState)
+    equivariant_model_loc(_close(nn, ll; filter = filter), radial, L; categories, _get_cat, d, group, isState, isreal)
  end
+
+extend_n_orbs(n_orbs, LLset) = [ n_orbs[l1+1] * n_orbs[l2+1] for (l1,l2) in LLset]
+extend_n_orbs(n_orbs) = extend_n_orbs(n_orbs, [(l1,l2) for l1 = 0:length(n_orbs)-1 for l2 = 0:length(n_orbs)-1])
+
+function equivariant_operator(spec_nlm, radial::Radial_basis, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); categories=[], d=3, group="O3", isState=true, isreal = true)
+    luxchain, ps, st, LLset = equivariant_model_loc(spec_nlm, radial, Lmax; categories, d = d, group = group, isState = isState, isreal)
+    @assert length(n_orbs) == Lmax + 1
+    @assert length(LLset)  == (Lmax + 1)^2
+    ext_n_orbs = extend_n_orbs(n_orbs, LLset)
+
+    len = [size(luxchain.layers.AA2BB.layers[i].op,1) for i = 1:(Lmax+1)^2]
+    
+    Linear_layer = Lux.Parallel(nothing, [Polynomials4ML.LinearLayer(len[i], ext_n_orbs[i]) for i = 1:(Lmax+1)^2]... )
+    luxchain = append_layer(luxchain, Linear_layer; l_name = :dot)
+
+    ps, st = Lux.setup(MersenneTwister(1234), luxchain)
+
+    return luxchain, ps, st
+end
+
+function equivariant_operator(totdeg::Int64, ν::Int64, radial::Radial_basis, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); categories=[], d=3, group="O3", isState=true, isreal = true)
+    equivariant_operator(degord2spec(radial; totaldegree = totdeg, order = ν, Lmax=Lmax, catagories = categories, islong = true)[2], radial, Lmax, n_orbs; categories, d = d, group = group, isState = isState, isreal)
+end
+
+function equivariant_operator(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); categories=[], d=3, group="O3", isState=true, isreal = true)
+    filter = RPE_filter_long(2*Lmax)
+    equivariant_operator(_close(nn, ll; filter = filter), radial, Lmax, n_orbs; categories, d = d, group = group, isState = isState, isreal)
+end
