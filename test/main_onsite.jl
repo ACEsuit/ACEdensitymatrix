@@ -219,7 +219,7 @@ end
 Rext = identity.(Rext)
 Yext = identity.(Yext)
 
-@time eval_model(onsite_model, Rext[1])-Yext[1]
+@time eval_model(onsite_model, Rext[1])-Yext[1] |> norm
 
 # plot and other comparisons
 Yexts = vec(Yext[1])
@@ -236,11 +236,11 @@ end
 
 # plot(Yt, Yt)
 
-# smallest = sortperm(abs.(Yss))
-smallest = 1:196000
+smallest = sortperm(abs.(Yss))
+# smallest = 1:196000
 
-posi = 1:5000
-plot(Yss[smallest][posi], Yss[smallest][posi])
-scatter!(Yss[smallest][posi], Yrss[smallest][posi], label = "Training")
+posi = 1:10000
+plot(Yss[smallest][posi], Yss[smallest][posi], label = "Ideal")
+scatter(Yss[smallest][posi], Yrss[smallest][posi], label = "Training")
 scatter!(Yins[smallest][posi], Yinss[smallest][posi], label = "Interpolation Testing")
 scatter!(Yexts[smallest][posi], Yextss[smallest][posi], label = "Extrapolation Testing")
