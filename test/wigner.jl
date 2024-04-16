@@ -36,8 +36,8 @@ end
 """
 auxiliary matrix - indices for D matrix
 """
-wigner_D_indices(L::Integer) = (   @assert L >= 0;
-		[ D_Index(1, i - 1 - L, j - 1 - L) for j = 1:2*L+1, i = 1:2*L+1] )
+# wigner_D_indices(L::Integer) = (   @assert L >= 0;
+# 		[ D_Index(1, i - 1 - L, j - 1 - L) for j = 1:2*L+1, i = 1:2*L+1] )
 
 Base.adjoint(idx::D_Index) = D_Index( (-1)^(idx.μ+idx.m), - idx.μ, - idx.m)
 

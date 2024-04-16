@@ -65,3 +65,16 @@ for L1 in 0:Lmax
         end
     end
 end
+
+# the EQM basis should have the same equivariance as the data above
+maxdeg = 4
+ord = 2
+rcut = 10.0
+Zi = 6
+Zs = [6,1,8]
+Lmax = 2
+n_orbs = [3,2,1]
+# construct the basis
+onsite_model = On_Model(maxdeg, ord, rcut, Zi, Zs, Lmax, n_orbs)
+
+# R, QR, D_CC = eval_model(onsite_model, R), D_CC2 = eval_model(onsite_model, QR), DCC and DCC2 should pass the above test too

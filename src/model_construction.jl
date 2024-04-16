@@ -17,7 +17,7 @@ function specnlm2spec1p(spec_nlm)
     return spec1p, lmax, nmax + 1
 end
 
-abstract type AbstractPoly4MLBasis end
+abstract type AbstractModel end
 
 struct On_Model <: AbstractModel
     model_on::Chain
@@ -40,6 +40,14 @@ struct density_model
 end
 
 isfitted(model::AbstractModel) = model.fitted
+get_L(model::On_Model) = Int(sqrt(length(model.ps.dot)))-1
+function get_norbs(model::On_Model)
+    n_orbs = [Int(sqrt(size(model.ps.dot[1].W,1)))]
+    for i = 2:Int(sqrt(length(model.ps.dot)))
+        push!(n_orbs, Int(size(model.ps.dot[i].W,1)/ n_orbs[1]))
+    end
+    return n_orbs
+end
 eval_model(model::AbstractModel, x::Union{State{T}, Vector{State{T}}}) where {T} = sub_densitymatrix(model.model_on(x, model.ps, model.st)[1])
 
 
@@ -94,13 +102,13 @@ function sub_densitymatrix(x::NTuple{Len,Vector{Matrix{T}}}) where {Len, T}
     len = sum( (2i-1) * n_orbs[i] for i = 1:length(n_orbs) )
     H = zeros(T,len,len)
     for (t,(l1,l2)) in enumerate(LLset)
-       pos_init_x = l1 == 0 ? 1 : sum( (2i+1) * n_orbs[i+1] for i = 0:l1-1 ) + 1
-       pos_init_y = l2 == 0 ? 1 : sum( (2i+1) * n_orbs[i+1] for i = 0:l2-1 ) + 1
-       ijset = [(i,j) for i = 1:n_orbs[l1+1] for j = 1:n_orbs[l2+1]]
-       for (k,(i,j)) in enumerate(ijset)
-          H[pos_init_x + (2l1+1) * (i-1) : pos_init_x + (2l1+1) * i - 1, pos_init_y + (2l2+1) * (j-1) : pos_init_y + (2l2+1) * j - 1] = x[t][k]
-       end
+        pos_init_x = l1 == 0 ? 1 : sum( (2i+1) * n_orbs[i+1] for i = 0:l1-1 ) + 1
+        pos_init_y = l2 == 0 ? 1 : sum( (2i+1) * n_orbs[i+1] for i = 0:l2-1 ) + 1
+        ijset = [(i,j) for i = 1:n_orbs[l1+1] for j = 1:n_orbs[l2+1]]
+        for (k,(i,j)) in enumerate(ijset)
+            H[pos_init_x + (2l1+1) * (i-1) : pos_init_x + (2l1+1) * i - 1, pos_init_y + (2l2+1) * (j-1) : pos_init_y + (2l2+1) * j - 1] = x[t][k]
+        end
     end
 
-    return H 
+    return (H + H')/2
 end

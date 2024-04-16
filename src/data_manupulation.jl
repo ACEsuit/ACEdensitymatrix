@@ -97,3 +97,20 @@ function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Union{Vector{
 
     return D[pos_I, pos_J][pos_L1, pos_L2][pos_μ1, pos_μ2]
 end
+
+get_Y(Y, n_orbs::Vector{Int64}, l1::Int64, l2::Int64, μ1::Int64, μ2::Int64) = get_Y(Y, n_orbs, n_orbs, l1, l2, μ1, μ2)
+
+function get_Y(Y, n_orbs1::Vector{Int64}, n_orbs2::Vector{Int64}, l1::Int64, l2::Int64, μ1::Int64, μ2::Int64)
+    # Get the block of the density matrix
+    # l1,l2 are the angular momentum indices
+    # μ1,μ2 are the indices for the (l1,l2) blocks
+    # n_orbs1,n_orbs2 are the number of orbitals for each atom
+
+    pos_L1 = l1 == 0 ? (1:n_orbs1[1]) : (sum([n_orbs1[i]*(2i-1) for i = 1:l1])+1:sum([n_orbs1[i]*(2i-1) for i = 1:l1+1]))
+    pos_L2 = l2 == 0 ? (1:n_orbs2[1]) : (sum([n_orbs2[i]*(2i-1) for i = 1:l2])+1:sum([n_orbs2[i]*(2i-1) for i = 1:l2+1]))
+
+    pos_μ1 = 1+(μ1-1)*(2l1+1):2l1+1+(μ1-1)*(2l1+1)
+    pos_μ2 = 1+(μ2-1)*(2l2+1):2l2+1+(μ2-1)*(2l2+1)
+
+    return Y[pos_L1, pos_L2][pos_μ1, pos_μ2]
+end
