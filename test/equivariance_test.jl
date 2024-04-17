@@ -85,8 +85,8 @@ Spec = Int.(frame["Atomic numbers"][:,1])
 R1 = [State(rr = SVector{3}(Cord1[:,J] - Cord1[:,1]), Zi = Spec[1], Zj = Spec[J]) for J in setdiff(1:size(Cord1,2), [1])]
 R2 = [State(rr = SVector{3}(Cord2[:,J] - Cord2[:,1]), Zi = Spec[1], Zj = Spec[J]) for J in setdiff(1:size(Cord1,2), [1])]
 
-D_CC = eval_model(onsite_model, R1)
-D_CC2 = eval_model(onsite_model, R2)
+D_CC = eval_model(md, R1)
+D_CC2 = eval_model(md, R2)
 
 # Validate equivariance of the onsite basis
 
