@@ -1,7 +1,4 @@
-using Setfield, LinearAlgebra, ACEfit, Distributed, DistributedArrays
-# using ACEfit: linear_solve, SKLEARN_ARD, SKLEARN_BRR
-# using PyCall
-# using LowRankApprox: pqrfact
+using Setfield, LinearAlgebra, ACEfit
 
 # ```
 # fit function for onsite model:
@@ -9,7 +6,7 @@ using Setfield, LinearAlgebra, ACEfit, Distributed, DistributedArrays
 #     Rs: a vector of State objects <==> {R_II}_I
 #     Ys: a vector of matrices <==> D_II
 # ```
-function fit!(model::On_Model, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}; Γ = I, λ = 1e-12, Solver = "LSQR") where {T, TY}
+function fit!(model::On_Model, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}; Γ = I, λ = 1e-12, Solver = ACEfit.LSQR(damp = 0, atol = 1e-6)) where {T, TY}
     LLset = [(l1,l2) for l2 in 0:get_L(model), l1 in 0:get_L(model)]
     n_orbs = get_norbs(model)
     @assert(length(LLset) == length(model.ps.dot))
@@ -49,37 +46,7 @@ function fit!(model::On_Model, Rs::Union{Vector{State{T}},Vector{Vector{State{T}
             Y = [Y; zeros(num)]
 
             # solve for C[kk]
-            if Solver == "QR"
-                C[kk,:] = real(qr(A) \ Y)
-            elseif Solver == "NaiveSolver"
-                C[kk,:] = real((A'*A) \ (A'*Y))
-            elseif Solver == "LSQR"
-                Ad, Yd = distribute(A), distribute(Y)
-                C[kk,:] = real(IterativeSolvers.lsqr(Ad, Yd; atol = 1e-6, btol = 1e-6))
-                close(Ad), close(Yd)
-            # elseif Solver == "ARD"
-            #     C[kk,:] =  linear_solve(SKLEARN_ARD(;n_iter = niter, tol = ardtol), A, Y)["C"]
-            # elseif Solver == "BRR"
-            #     C[kk,:] =  linear_solve(SKLEARN_BRR(;n_iter = niter, tol = ardtol), A, Y)["C"]
-            # elseif Solver == "RRQR"
-            #     AP = A / I
-            #     θP = pqrfact(A, rtol = ardtol) \ Y
-            #     C[kk,:] =  I \ θP
-            # elseif Solver == "ARD_false"
-            #     ARD = pyimport("sklearn.linear_model")."ARDRegression"
-            #     clf = ARD(n_iter=niter, threshold_lambda=10000, tol=ardtol,
-            #             fit_intercept=false, compute_score=true)
-            #     # BRR = pyimport("sklearn.linear_model")."BayesianRidge"
-            #     # clf = BRR(n_iter=niter, tol=ardtol,
-            #     #           fit_intercept=false, compute_score=true)
-            #     clf.fit(A, Y)
-            #     if length(clf.scores_) < niter
-            #        @info "BRR converged to tol=$ardtol after $(length(clf.scores_)) iterations."
-            #     else
-            #        @warn "\n\nBRR did not converge to tol=$ardtol after n_iter=$niter iterations.\n\n"
-            #     end
-            #     C[kk,:] =  clf.coef_
-            end
+            C[kk,:] = ACEfit.solve(solver, A, y)["C"]
 
             @show norm(A * C[kk,:] - Y)
             # @show C[kk,:]
