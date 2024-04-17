@@ -6,7 +6,7 @@ using Setfield, LinearAlgebra, ACEfit
 #     Rs: a vector of State objects <==> {R_II}_I
 #     Ys: a vector of matrices <==> D_II
 # ```
-function fit!(model::On_Model, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}; Γ = I, λ = 1e-12, Solver = ACEfit.LSQR(damp = 0, atol = 1e-6)) where {T, TY}
+function fit!(model::On_Model, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}; Γ = I, λ = 1e-12, solver = ACEfit.LSQR(damp = 0, atol = 1e-6)) where {T, TY}
     LLset = [(l1,l2) for l2 in 0:get_L(model), l1 in 0:get_L(model)]
     n_orbs = get_norbs(model)
     @assert(length(LLset) == length(model.ps.dot))
@@ -46,7 +46,8 @@ function fit!(model::On_Model, Rs::Union{Vector{State{T}},Vector{Vector{State{T}
             Y = [Y; zeros(num)]
 
             # solve for C[kk]
-            C[kk,:] = ACEfit.solve(solver, A, y)["C"]
+            C[kk,:] = ACEfit.solve(solver, A, Y)["C"]
+            # list of potential solvers: ACEfit: QR, LSQR, RRQR, SKLEARN_BRR, SKLEARN_ARD, BLR, TruncatedSVD...
 
             @show norm(A * C[kk,:] - Y)
             # @show C[kk,:]
