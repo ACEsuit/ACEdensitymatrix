@@ -1,7 +1,8 @@
-using Statistics, Plots, Setfield, LinearAlgebra
+using Statistics, Plots
 
 include("../src/data_manupulation.jl")
 include("../src/model_construction.jl")
+include("../src/fit.jl")
 
 # model construction
 # parameters 
@@ -22,93 +23,6 @@ frame = read_frame(molecule,2)
 R, D = translate_frame(frame)
 R11 = get_state(R,1,1)
 @time eval_model(onsite_model, R11)
-
-function flat(a)
-    tmp = ones(length(a[1]),length(a))
-    for i in 1:length(a)
-        tmp[:,i] = vec(a[i])
-    end
-    return tmp
-end
-
-function k2ij(k, n, m)
-    i = div(k-1, m) + 1
-    j = k - (i-1)*m
-    return i, j
-end
-# ```
-# fit function for onsite model:
-#     model: a On_Model object, fitted or not
-#     Rs: a vector of State objects <==> {R_II}_I
-#     Ys: a vector of matrices <==> D_II
-# ```
-function fit!(model::On_Model, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}) where {T, TY}
-    LLset = [(l1,l2) for l2 in 0:get_L(model), l1 in 0:get_L(model)]
-    n_orbs = get_norbs(model)
-    @assert(length(LLset) == length(model.ps.dot))
-
-    layer_set = ["layer_$i" for i in 1:length(LLset)]
-    layer_set = Symbol.(layer_set)
-
-    for (i, (l1,l2)) in enumerate(LLset)
-        println("Fitting for l1 = $l1, l2 = $l2")
-        println()
-        
-        # C can simply be a vector - saving memory
-        C = zeros(eltype(model.ps.dot[i].W),size(model.ps.dot[i].W)...)
-        # construct A
-        A = zeros((2l1+1)*(2l2+1)*length(Rs), size(C,2))
-        
-        partial_md = Chain([model.model_on.layers[i] for i = 1:6]...)
-        ps, st = Lux.setup(MersenneTwister(1234), partial_md)
-        for (j, R) in enumerate(Rs)
-            # if l1 == 1 && l2 == 2
-            #     @show size(partial_md(R,ps,st)[1][i][1])
-            # end
-            A[(2l1+1)*(2l2+1)*(j-1)+1:(2l1+1)*(2l2+1)*j,:] = flat(partial_md(R,ps,st)[1][i])
-        end
-        
-        for kk = 1 : size(C, 1)
-            ii, jj = k2ij(kk, n_orbs[l1+1], n_orbs[l2+1])
-            println("Fitting the ($ii,$jj)-th ($l1,$l2) block")
-            println()
-            
-            Yij = [ get_Y(Ys[t], n_orbs, n_orbs, l1, l2, ii, jj) for t = 1:length(Ys) ]
-
-            # # debug
-            # if l1 == 1 && l2 == 2 && ii == 1 && jj == 1
-            #     @show Yij[1] == Ys[1][4:6,10:14]
-            # end
-
-            # @show typeof(Yij)
-            # construct Y 
-            Y = zeros(Float64, length(Ys)*length(Yij[1]))
-            for k in 1:length(Ys)
-                Y[(k-1)*length(Yij[1])+1:k*length(Yij[1])] = Yij[k]
-            end
-            # solve for C[kk]
-            # TODO: enable more solvers and regularizers
-            Γ = I
-            λ = 1e-12
-            # C[kk,:] = (A'*A + λ*Γ) \ (A'*Y) # naive solver - just for illustration
-            C[kk,:] = qr([A; λ*Γ]) \ [Y; zeros(Float64,size(A,2))] # another naive solver
-
-            @show norm(A * C[kk,:] - Y)
-            # @show C[kk,:]
-        end
-        @set! model.ps.dot.$(layer_set[i]).W = C
-    end
-    
-    model = On_Model(model.model_on, model.ps, model.st, true)
-    # @show model.ps.dot[1].W
-    # @show model.fitted
-    return model
-end
-
-# function set_own!(ps,kk,C)
-#     ps.dot[kk].W = C
-#     return ps
-# end
 
 # Constructed Rs and Ys and it is all set
 Rs = []

@@ -29,6 +29,20 @@ function ctran(L)
     return AA
 end
 
+function flat(a)
+    tmp = ones(length(a[1]),length(a))
+    for i in 1:length(a)
+        tmp[:,i] = vec(a[i])
+    end
+    return tmp
+end
+
+function k2ij(k, n, m)
+    i = div(k-1, m) + 1
+    j = k - (i-1)*m
+    return i, j
+end
+
 cg = ClebschGordan(ComplexF64)
 
 # The transformation matrix from a long equivariant vector to (L1, L2) equivariant tensors
