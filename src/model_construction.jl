@@ -37,26 +37,37 @@ struct Off_Model{L1,L2} <: AbstractModel where {L1,L2}
     fitted::Bool
 end
 
-struct density_model
-    On_Models::Vector{On_Model}
-    Off_Models::Vector{Off_Model}
-    # fitted::Bool
+struct Density_Model{T}
+    Models::Dict{Union{T,Tuple{T,T}},AbstractModel}
 end
 
 isfitted(model::AbstractModel) = model.fitted
+isfitted(model::Density_Model) = all(isfitted.(model.On_Models)) && all(isfitted.(model.Off_Models))
 get_L(model::On_Model{L}) where L = (L-1,L-1)
 get_L(model::Off_Model{L1,L2}) where {L1, L2} = (L1-1,L2-1)
 get_norbs(model::On_Model) = (model.n_orbs,model.n_orbs)
 get_norbs(model::Off_Model) = (model.n_orbs1,model.n_orbs2)
 eval_model(model::AbstractModel, x::Union{State{T}, Vector{State{T}}}) where {T} = sub_densitymatrix(model.model(x, model.ps, model.st)[1], get_L(model)..., get_norbs(model)...)
 
-
-# function density_model(maxdeg, ord, cutoffs, ao_labels)
-#     Zs, n_orbs = get_info(ao_labels)
-#     @assert length(Zs) == length(n_orbs)
-
-#     return density_model(maxdeg, ord, cutoffs, Zs, n_orbs)
-# end
+# NOTE: Here we assume that the same type of atoms are discretized in the same way
+# Input: `ao_dict`` contains a list of atomic numbers and the number of orbitals for each atom
+# including the three parameters that define the basis set (maxdeg, ord, cutoff)
+# Output: a Density Model that contains all the On_Models and Off_Models, storing as Dictionary
+# When evaluating a Density Model, the model should not only know a whole State, but also the ao_labels
+function Density_Model(ao_dict::Dict)
+    Zs = Int.(collect(keys(ao_dict)))
+    T = typeof(Zs[1])
+    dict = Dict{Union{T,Tuple{T,T}},AbstractModel}()
+    for i = 1:length(Zs)
+        push!(dict, Zs[i] => On_Model(ao_dict[Zs[i]]["maxdeg"], ao_dict[Zs[i]]["ord"], ao_dict[Zs[i]]["rcut"], Zs[i], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"]))
+        # in principle, j should start from i because we can then use the symmetry of the density matrix but let's keep it for now
+        for j = 1:length(Zs)
+            # cutoff here is not so correct but let's keep it for now
+            push!(dict, (Zs[i],Zs[j]) => Off_Model(ao_dict[Zs[i]]["maxdeg"], ao_dict[Zs[i]]["ord"], maximum([ao_dict[Zs[i]]["rcut"], ao_dict[Zs[j]]["rcut"]]), maximum([ao_dict[Zs[i]]["zcut"], ao_dict[Zs[j]]["zcut"]]), Zs[i], Zs[j], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, length(ao_dict[Zs[j]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"], ao_dict[Zs[j]]["n_orbs"]))
+        end
+    end
+    return Density_Model(dict)
+end
 
 # function density_model(maxdeg, ord, cutoffs, Zs, n_orbs)
 #     on_bases = []
