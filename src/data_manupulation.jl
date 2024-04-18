@@ -98,9 +98,9 @@ function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Union{Vector{
     return D[pos_I, pos_J][pos_L1, pos_L2][pos_μ1, pos_μ2]
 end
 
-get_Y(Y, n_orbs::Vector{Int64}, l1::Int64, l2::Int64, μ1::Int64, μ2::Int64) = get_Y(Y, n_orbs, n_orbs, l1, l2, μ1, μ2)
+get_Y(Y, n_orbs::Union{Vector{Int64}, SVector{L,Int64}}, l1::Int64, l2::Int64, μ1::Int64, μ2::Int64) where L = get_Y(Y, n_orbs, n_orbs, l1, l2, μ1, μ2)
 
-function get_Y(Y, n_orbs1::Vector{Int64}, n_orbs2::Vector{Int64}, l1::Int64, l2::Int64, μ1::Int64, μ2::Int64)
+function get_Y(Y, n_orbs1::Union{Vector{Int64}, SVector{L1,Int64}}, n_orbs2::Union{Vector{Int64}, SVector{L2,Int64}}, l1::Int64, l2::Int64, μ1::Int64, μ2::Int64) where {L1, L2}
     # Get the block of the density matrix
     # l1,l2 are the angular momentum indices
     # μ1,μ2 are the indices for the (l1,l2) blocks

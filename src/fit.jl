@@ -6,9 +6,11 @@ using Setfield, LinearAlgebra, ACEfit
 #     Rs: a vector of State objects <==> {R_II}_I
 #     Ys: a vector of matrices <==> D_II
 # ```
-function fit!(model::On_Model, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}; Γ = I, λ = 1e-12, solver = ACEfit.LSQR(damp = 0, atol = 1e-6)) where {T, TY}
-    LLset = [(l1,l2) for l2 in 0:get_L(model), l1 in 0:get_L(model)]
-    n_orbs = get_norbs(model)
+
+function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}; Γ = I, λ = 1e-12, solver = ACEfit.LSQR(damp = 0, atol = 1e-6)) where {T, TY}
+    TP = typeof(model)
+    LLset = [(l1,l2) for l2 in 0:get_L(model)[2], l1 in 0:get_L(model)[1]]
+    n_orbs1, n_orbs2 = get_norbs(model)
     @assert(length(LLset) == length(model.ps.dot))
 
     layer_set = ["layer_$i" for i in 1:length(LLset)]
@@ -23,7 +25,7 @@ function fit!(model::On_Model, Rs::Union{Vector{State{T}},Vector{Vector{State{T}
         # construct A
         A = zeros((2l1+1)*(2l2+1)*length(Rs), size(C,2))
         
-        partial_md = Chain([model.model_on.layers[i] for i = 1:6]...)
+        partial_md = Chain([model.model.layers[i] for i = 1:6]...)
         ps, st = Lux.setup(MersenneTwister(1234), partial_md)
         for (j, R) in enumerate(Rs)
             A[(2l1+1)*(2l2+1)*(j-1)+1:(2l1+1)*(2l2+1)*j,:] = flat(partial_md(R,ps,st)[1][i])
@@ -32,11 +34,11 @@ function fit!(model::On_Model, Rs::Union{Vector{State{T}},Vector{Vector{State{T}
         A = [A; λ*Γ]
         
         for kk = 1 : size(C, 1)
-            ii, jj = k2ij(kk, n_orbs[l1+1], n_orbs[l2+1])
+            ii, jj = k2ij(kk, n_orbs1[l1+1], n_orbs2[l2+1])
             println("Fitting the ($ii,$jj)-th ($l1,$l2) block")
             println()
             
-            Yij = [ get_Y(Ys[t], n_orbs, n_orbs, l1, l2, ii, jj) for t = 1:length(Ys) ]
+            Yij = [ get_Y(Ys[t], n_orbs1, n_orbs2, l1, l2, ii, jj) for t = 1:length(Ys) ]
 
             # construct Y 
             Y = zeros(Float64, length(Ys)*length(Yij[1]))
@@ -55,7 +57,7 @@ function fit!(model::On_Model, Rs::Union{Vector{State{T}},Vector{Vector{State{T}
         @set! model.ps.dot.$(layer_set[i]).W = C
     end
     
-    model = On_Model(model.model_on, model.ps, model.st, true)
+    model = (TP <: On_Model) ? TP(model.model, model.ps, model.st, model.n_orbs, true) : TP(model.model, model.ps, model.st, model.n_orbs1, model.n_orbs2, true)
     # @show model.ps.dot[1].W
     # @show model.fitted
     return model

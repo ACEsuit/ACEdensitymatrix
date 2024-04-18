@@ -20,17 +20,20 @@ end
 
 abstract type AbstractModel end
 
-struct On_Model <: AbstractModel
-    model_on::Chain
+struct On_Model{L} <: AbstractModel where L 
+    model::Chain
     ps::NamedTuple
     st::NamedTuple
+    n_orbs::SVector{L,Int64}
     fitted::Bool
 end
 
-struct Off_Model <: AbstractModel
-    model_off::Chain
+struct Off_Model{L1,L2} <: AbstractModel where {L1,L2} 
+    model::Chain
     ps::NamedTuple
     st::NamedTuple
+    n_orbs1::SVector{L1,Int64}
+    n_orbs2::SVector{L2,Int64}
     fitted::Bool
 end
 
@@ -41,15 +44,11 @@ struct density_model
 end
 
 isfitted(model::AbstractModel) = model.fitted
-get_L(model::On_Model) = Int(sqrt(length(model.ps.dot)))-1
-function get_norbs(model::On_Model)
-    n_orbs = [Int(sqrt(size(model.ps.dot[1].W,1)))]
-    for i = 2:Int(sqrt(length(model.ps.dot)))
-        push!(n_orbs, Int(size(model.ps.dot[i].W,1)/ n_orbs[1]))
-    end
-    return n_orbs
-end
-eval_model(model::AbstractModel, x::Union{State{T}, Vector{State{T}}}) where {T} = sub_densitymatrix(model.model_on(x, model.ps, model.st)[1])
+get_L(model::On_Model{L}) where L = (L-1,L-1)
+get_L(model::Off_Model{L1,L2}) where {L1, L2} = (L1-1,L2-1)
+get_norbs(model::On_Model) = (model.n_orbs,model.n_orbs)
+get_norbs(model::Off_Model) = (model.n_orbs1,model.n_orbs2)
+eval_model(model::AbstractModel, x::Union{State{T}, Vector{State{T}}}) where {T} = sub_densitymatrix(model.model(x, model.ps, model.st)[1], get_L(model)..., get_norbs(model)...)
 
 
 # function density_model(maxdeg, ord, cutoffs, ao_labels)
@@ -88,7 +87,7 @@ end
 
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
 On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1)) where{T} = 
-                On_Model(equivariant_operator(maxdeg,ord,onsite_radial(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]))..., false)
+                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]))..., SVector{Lmax+1}(n_orbs),false)
 
 
 # radial basis for Offsite
@@ -130,27 +129,25 @@ function offsite_radial_basis(maxdeg::Int64, rcut::Float64=5.0, zcut::Float64=5.
 
 # An offsite submodel - input is a (local) two-center environment, output is the corresponding offsite block of the density matrix
 Off_Model(maxdeg::Int64, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1)) where {T} = 
-                Off_Model(equivariant_operator(maxdeg,ord,offsite_radial_basis(maxdeg, rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension)..., false)
+                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maxdeg, rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
 
 # adhoc code transforming an output of on or off model to a sub density matrix
-function sub_densitymatrix(x::NTuple{Len,Vector{Matrix{T}}}) where {Len, T}
-    L = Int(sqrt(Len)-1)
-    LLset = [(l1,l2) for l1 = 0:L for l2 = 0:L]
-    pos = findall(x->x[1]==x[2],LLset)
-    n_orbs = Int.(sqrt.(length.(x[pos])))
+function sub_densitymatrix(x::NTuple{Len,Vector{Matrix{T}}},L1::Int64,L2::Int64,n_orbs1::Union{Vector{Int64},SVector{L3,Int64}},n_orbs2::Union{Vector{Int64},SVector{L4,Int64}};sym = false) where {Len, L3, L4, T}
+    @assert Len == (L1+1)*(L2+1)
+    LLset = [(l1,l2) for l1 = 0:L1 for l2 = 0:L2]
 
-    @assert length(x) == length(LLset) # == length(n_orbs)
     # @assert unique(LLset) == LLset
-    len = sum( (2i-1) * n_orbs[i] for i = 1:length(n_orbs) )
-    H = zeros(T,len,len)
+    len1 = sum( (2i-1) * n_orbs1[i] for i = 1:length(n_orbs1) )
+    len2 = sum( (2i-1) * n_orbs2[i] for i = 1:length(n_orbs2) )
+    H = zeros(T,len1,len2)
     for (t,(l1,l2)) in enumerate(LLset)
-        pos_init_x = l1 == 0 ? 1 : sum( (2i+1) * n_orbs[i+1] for i = 0:l1-1 ) + 1
-        pos_init_y = l2 == 0 ? 1 : sum( (2i+1) * n_orbs[i+1] for i = 0:l2-1 ) + 1
-        ijset = [(i,j) for i = 1:n_orbs[l1+1] for j = 1:n_orbs[l2+1]]
+        pos_init_x = l1 == 0 ? 1 : sum( (2i+1) * n_orbs1[i+1] for i = 0:l1-1 ) + 1
+        pos_init_y = l2 == 0 ? 1 : sum( (2i+1) * n_orbs2[i+1] for i = 0:l2-1 ) + 1
+        ijset = [(i,j) for i = 1:n_orbs1[l1+1] for j = 1:n_orbs2[l2+1]]
         for (k,(i,j)) in enumerate(ijset)
             H[pos_init_x + (2l1+1) * (i-1) : pos_init_x + (2l1+1) * i - 1, pos_init_y + (2l2+1) * (j-1) : pos_init_y + (2l2+1) * j - 1] = x[t][k]
         end
     end
 
-    return (H + H')/2
+    return sym = true ? H : (H + H')/2
 end
