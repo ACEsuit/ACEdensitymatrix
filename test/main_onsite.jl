@@ -6,8 +6,8 @@ include("../src/fit.jl")
 
 # model construction
 # parameters 
-maxdeg = 10
-ord = 2
+maxdeg = 6
+ord = 1
 rcut = 10.0
 Zi = 6
 Zs = [6,1,8]
@@ -45,15 +45,15 @@ end
 Rs = identity.(Rs)
 Ys = identity.(Ys)
 
-onsite_model = fit!(onsite_model, Rs, Ys)
+onsite_model = fit!(onsite_model, Rs, Ys; solver = ACEfit.QR())
 
 onsite_model.fitted
-
+onsite_model.ps.dot.layer_1.W
 # eval_model(onsite_model, Rs[1])[4:9,10:14]
 # Ys[1][4:9,10:14]
 
 
-E = abs.(eval_model(onsite_model, Rs[1]) - Ys[1])
+@time E = abs.(eval_model(onsite_model, Rs[1]) - Ys[1])
 
 contourf(1:14,1:14,E)
 
@@ -150,11 +150,19 @@ end
 
 # plot(Yt, Yt)
 
-smallest = sortperm(abs.(Yss))
-# smallest = 1:196000
+# smallest = sortperm(abs.(Yss))
+smallest = 1:196000
 
 posi = 1:10000
 plot(Yss[smallest][posi], Yss[smallest][posi], label = "Ideal")
-scatter(Yss[smallest][posi], Yrss[smallest][posi], label = "Training")
+scatter!(Yss[smallest][posi], Yrss[smallest][posi], label = "Training")
 scatter!(Yins[smallest][posi], Yinss[smallest][posi], label = "Interpolation Testing")
 scatter!(Yexts[smallest][posi], Yextss[smallest][posi], label = "Extrapolation Testing")
+
+# cross validation
+# molecule = TrajectoryHDF5("data/propanol.h5")
+
+# frame = read_frame(molecule,1)
+# R, D = translate_frame(frame)
+# R11 = get_state(R,1,1)
+# @time eval_model(onsite_model, R11) - D[1:14,1:14] |> norm

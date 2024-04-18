@@ -117,75 +117,119 @@ function _rpi_A2B_matrix(cgen::Rot3DCoeffs_loc{L1,L2,T}, spec) where {L1,L2,T}
     return sparse(Irow, Jcol, vals, idxB, length(spec))
 end
 
-function equivariant_model_loc(spec_nlm, radial::Radial_basis, L::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true)
-    # if rSH && L > 0
-    #    error("rSH is only implemented (for now) for L = 0")
-    # end
- 
-    # first filt out those unfeasible spec_nlm
-    filter_init = RPE_filter_long(2*L)
-    spec_nlm = spec_nlm[findall(x -> filter_init(x) == 1, spec_nlm)]
-    
-    # sort!(spec_nlm, by = x -> length(x))
-    spec_nlm = closure(spec_nlm,filter_init; categories = categories)
-    
-    luxchain, ps, st = EquivariantModels.xx2AA(spec_nlm, radial; categories = categories, _get_cat = _get_cat, d = d, rSH = false, isState = isState)
-    # F(X) = luxchain_tmp(X, ps, st)[1]
- 
-    LLset = [(l1,l2) for l1 = 0:L for l2 = 0:L]
-    C = Vector{Any}(undef, length(LLset))
-    pos = Vector{Any}(undef, length(LLset))
-        
-    
-    for (l,(l1,l2)) in enumerate(LLset)
-        filter = RPE_filter(l1+l2)
-        cgen = Rot3DCoeffs_loc(l1,l2) # TODO: this should be made group related
- 
-        tmp = spec_nlm[findall(x -> filter(x) == 1, spec_nlm)]
+# function degord2spec_loc(radial::Radial_basis; totaldegree, order, Lmax, catagories = [], filtered_extension = simple_extension, wL = 1, islong = true, rSH = false, admissible = default_admissible)
+#    # Rn = radial.radial_basis(totaldegree)
+#    Ylm = CYlmBasis(totaldegree)
 
-        C[l] = _rpi_A2B_matrix(cgen, tmp)
-        pos[l] = findall(x -> filter(x) == 1, spec_nlm) # [ dict[tmp[j]] for j = 1:length(tmp)]
-    end
+#    spec1p = make_nlms_spec(radial, Ylm; totaldegree = totaldegree, admissible = (br, by) -> br.n + wL * by.l <= totaldegree)
+#    spec1p = sort(spec1p, by = (x -> x.n + x.l * wL))
+#    spec1pidx = getspec1idx(spec1p, radial.Radialspec, Ylm)
 
-    l_sym = Lux.Parallel(nothing, [ConstLinearLayer(_linear_operator_loc(l1,l2,C[i],pos[i],length(spec_nlm))) for (i,(l1,l2)) in enumerate(LLset)]... )
-    # C - A2Bmap
-    luxchain = append_layer(luxchain, l_sym; l_name = :AA2BB)
+#    # define sparse for n-correlations
+#    tup2b = vv -> [ spec1p[v] for v in vv[vv .> 0]  ]
+#    default_admissible = bb -> length(bb) == 0 || sum(b.n for b in bb) + wL * sum(b.l for b in bb) <= totaldegree
 
-    if isreal
-        l_c2r = Lux.Parallel(nothing, [WrappedFunction(x -> real.(Ref(ctran(l1)) .* x .* Ref(ctran(l2)'))) for (l1,l2) in LLset]... )
-        luxchain = append_layer(luxchain, l_c2r; l_name = :complex2real)
-    end
+#    # to construct SS, SD blocks
+#    if rSH
+#       filter_ = RPE_filter_real(Lmax)
+#    else
+#       filter_ = islong ? RPE_filter_long(Lmax) : RPE_filter(Lmax)
+#    end
 
-    l_id = Lux.Parallel(nothing, [WrappedFunction(x -> identity.(x)) for i in 1:length(LLset)]... )
-    luxchain = append_layer(luxchain, l_id; l_name = :TypeStablization)
+#    specAA = gensparse(; NU = order, tup2b = tup2b, filter = filter_, 
+#                         admissible = default_admissible,
+#                         minvv = fill(0, order), 
+#                         maxvv = fill(length(spec1p), order), 
+#                         ordered = true)
 
-    ps, st = Lux.setup(MersenneTwister(1234), luxchain)
-    
-    return luxchain, ps, st, LLset
- end
+#    spec = [ vv[vv .> 0] for vv in specAA if !(isempty(vv[vv .> 0]))]
+#    # map back to nlm
+#    AAspec = getspecnlm(spec1p, spec)
+#    if !isempty(catagories)
+#       AAspec = filtered_extension(AAspec, catagories)
+#    end
+#    Aspec = specnlm2spec1p(AAspec)[1]
+#    return Aspec, AAspec # Aspecgetspecnlm(spec1p, spec)
+# end
+
+function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true)
+
+   # first filt out those unfeasible spec_nlm
+   filter_init = RPE_filter_long(L1+L2)
+   spec_nlm = spec_nlm[findall(x -> filter_init(x) == 1, spec_nlm)]
+   
+   # sort!(spec_nlm, by = x -> length(x))
+   spec_nlm = closure(spec_nlm,filter_init; categories = categories)
+   
+   luxchain, ps, st = EquivariantModels.xx2AA(spec_nlm, radial; categories = categories, _get_cat = _get_cat, d = d, rSH = false, isState = isState)
+   # F(X) = luxchain_tmp(X, ps, st)[1]
+
+   LLset = [(l1,l2) for l1 = 0:L1 for l2 = 0:L2]
+   C = Vector{Any}(undef, length(LLset))
+   pos = Vector{Any}(undef, length(LLset))
+       
+   
+   for (l,(l1,l2)) in enumerate(LLset)
+       filter = RPE_filter(l1+l2)
+       cgen = Rot3DCoeffs_loc(l1,l2) # TODO: this should be made group related
+
+       tmp = spec_nlm[findall(x -> filter(x) == 1, spec_nlm)]
+
+       C[l] = _rpi_A2B_matrix(cgen, tmp)
+       pos[l] = findall(x -> filter(x) == 1, spec_nlm) # [ dict[tmp[j]] for j = 1:length(tmp)]
+   end
+
+   l_sym = Lux.Parallel(nothing, [ConstLinearLayer(_linear_operator_loc(l1,l2,C[i],pos[i],length(spec_nlm))) for (i,(l1,l2)) in enumerate(LLset)]... )
+   # C - A2Bmap
+   luxchain = append_layer(luxchain, l_sym; l_name = :AA2BB)
+
+   if isreal
+       l_c2r = Lux.Parallel(nothing, [WrappedFunction(x -> real.(Ref(ctran(l1)) .* x .* Ref(ctran(l2)'))) for (l1,l2) in LLset]... )
+       luxchain = append_layer(luxchain, l_c2r; l_name = :complex2real)
+   end
+
+   l_id = Lux.Parallel(nothing, [WrappedFunction(x -> identity.(x)) for i in 1:length(LLset)]... )
+   luxchain = append_layer(luxchain, l_id; l_name = :TypeStablization)
+
+   ps, st = Lux.setup(MersenneTwister(1234), luxchain)
+   
+   return luxchain, ps, st, LLset
+end
+
+equivariant_model_loc(spec_nlm, radial::Radial_basis, L::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true) = 
+      equivariant_model_loc(spec_nlm, radial, L, L; categories, _get_cat, d, group, isState, isreal)
  
  # more constructors equivariant_model
- equivariant_model_loc(totdeg::Int64, ν::Int64, radial::Radial_basis, L::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true) = 
-      equivariant_model_loc(degord2spec(radial; totaldegree = totdeg, order = ν, Lmax=L, islong = islong)[2], radial, L; categories, _get_cat, d, group, isState, isreal)
- 
+equivariant_model_loc(totdeg::Int64, ν::Int64, radial::Radial_basis, L1::Int64, L2::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true, cat_extension = simple_extension) = 
+      equivariant_model_loc(degord2spec(radial; totaldegree = totdeg, order = ν, Lmax = L1+L2, catagories = categories, filtered_extension = cat_extension, islong = islong)[2], radial, L1, L2; categories, _get_cat, d, group, isState, isreal)
+
  # With the _close function, the input could simply be an nnlllist (nlist,llist)
- equivariant_model_loc(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis, L::Int64; categories=[], _get_cat = _get_cat_default, d=3, group = "O3", isState = true, isreal = true) = begin
-    filter = RPE_filter_long(2*L)
-    equivariant_model_loc(_close(nn, ll; filter = filter), radial, L; categories, _get_cat, d, group, isState, isreal)
- end
 
-extend_n_orbs(n_orbs, LLset) = [ n_orbs[l1+1] * n_orbs[l2+1] for (l1,l2) in LLset]
-extend_n_orbs(n_orbs) = extend_n_orbs(n_orbs, [(l1,l2) for l1 = 0:length(n_orbs)-1 for l2 = 0:length(n_orbs)-1])
+equivariant_model_loc(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis, L1::Int64, L2::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true) = begin
+    filter = RPE_filter_long(L1+L2)
+    equivariant_model_loc(_close(nn, ll; filter = filter), radial, L1, L2; categories, _get_cat, d, group, isState, isreal)
+end
 
-function equivariant_operator(spec_nlm, radial::Radial_basis, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); categories=[], d=3, group="O3", isState=true, isreal = true)
-    luxchain, ps, st, LLset = equivariant_model_loc(spec_nlm, radial, Lmax; categories, d = d, group = group, isState = isState, isreal)
-    @assert length(n_orbs) == Lmax + 1
-    @assert length(LLset)  == (Lmax + 1)^2
-    ext_n_orbs = extend_n_orbs(n_orbs, LLset)
+equivariant_model_loc(totdeg::Int64, ν::Int64, radial::Radial_basis, L; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true) = 
+      equivariant_model_loc(totdeg, ν, radial, L, L; categories, _get_cat, d, group, isState, isreal)
 
-    len = [size(luxchain.layers.AA2BB.layers[i].op,1) for i = 1:(Lmax+1)^2]
+equivariant_model_loc(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis, L; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true) = 
+      equivariant_model_loc(nn, ll, radial, L, L; categories, _get_cat, d, group, isState, isreal)
+
+# extend_n_orbs(n_orbs, LLset) = [ n_orbs[l1+1] * n_orbs[l2+1] for (l1,l2) in LLset]
+# extend_n_orbs(n_orbs) = extend_n_orbs(n_orbs, [(l1,l2) for l1 = 0:length(n_orbs)-1 for l2 = 0:length(n_orbs)-1])
+extend_n_orbs(n_orbs1, n_orbs2) = [ n_orbs1[l1+1] * n_orbs2[l2+1] for l1 = 0:length(n_orbs1)-1, l2 = 0:length(n_orbs2)-1]
+extend_n_orbs(n_orbs1, n_orbs2, LLset) = [ n_orbs1[l1+1] * n_orbs2[l2+1] for (l1,l2) in LLset]
+
+function equivariant_operator(spec_nlm, radial::Radial_basis, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState=true, isreal = true)
+    luxchain, ps, st, LLset = equivariant_model_loc(spec_nlm, radial, L1, L2; categories, _get_cat = _get_cat, d = d, group = group, isState = isState, isreal = isreal)
+    @assert length(n_orbs1) == L1 + 1 && length(n_orbs2) == L2 + 1
+    @assert length(LLset)  == (L1 + 1) * (L2 + 1)
+    ext_n_orbs = extend_n_orbs(n_orbs1, n_orbs2, LLset)
+
+    len = [size(luxchain.layers.AA2BB.layers[i].op,1) for i = 1:(L1+1)*(L2+1)]
     
-    Linear_layer = Lux.Parallel(nothing, [Polynomials4ML.LinearLayer(len[i], ext_n_orbs[i]) for i = 1:(Lmax+1)^2]... )
+    Linear_layer = Lux.Parallel(nothing, [Polynomials4ML.LinearLayer(len[i], ext_n_orbs[i]) for i = 1:(L1+1)*(L2+1)]... )
     luxchain = append_layer(luxchain, Linear_layer; l_name = :dot)
 
     ps, st = Lux.setup(MersenneTwister(1234), luxchain)
@@ -193,11 +237,23 @@ function equivariant_operator(spec_nlm, radial::Radial_basis, Lmax::Int64, n_orb
     return luxchain, ps, st
 end
 
-function equivariant_operator(totdeg::Int64, ν::Int64, radial::Radial_basis, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); categories=[], d=3, group="O3", isState=true, isreal = true)
-    equivariant_operator(degord2spec(radial; totaldegree = totdeg, order = ν, Lmax=Lmax, catagories = categories, islong = true)[2], radial, Lmax, n_orbs; categories, d = d, group = group, isState = isState, isreal)
+equivariant_operator(spec_nlm, radial::Radial_basis, L::Int64, n_orbs::Vector{Int64}=ones(Int64,L+1); categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState=true, isreal = true) = 
+    equivariant_operator(spec_nlm, radial, L, L, n_orbs, n_orbs; categories = categories, _get_cat = _get_cat, d = d, group = group, isState = isState, isreal = isreal)
+
+function equivariant_operator(totdeg::Int64, ν::Int64, radial::Radial_basis, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState=true, isreal = true, cat_extension = simple_extension)
+   # equivariant_operator(degord2spec(radial; totaldegree = totdeg, order = ν, Lmax=maximum(L1+L2), catagories = categories, islong = true)[2], radial, L1, L2, n_orbs1, n_orbs2; categories = categories, _get_cat = _get_cat, d = d, group = group, isState = isState, isreal = isreal)
+   equivariant_operator(degord2spec(radial; totaldegree = totdeg, order = ν, Lmax = L1+L2, catagories = categories, filtered_extension = cat_extension, islong = true)[2], radial, L1, L2, n_orbs1, n_orbs2; categories = categories, _get_cat = _get_cat, d = d, group = group, isState = isState, isreal = isreal)
 end
 
-function equivariant_operator(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); categories=[], d=3, group="O3", isState=true, isreal = true)
-    filter = RPE_filter_long(2*Lmax)
-    equivariant_operator(_close(nn, ll; filter = filter), radial, Lmax, n_orbs; categories, d = d, group = group, isState = isState, isreal)
+equivariant_operator(totdeg::Int64, ν::Int64, radial::Radial_basis, L::Int64, n_orbs::Vector{Int64}=ones(Int64,L+1); categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState=true, isreal = true) = 
+    equivariant_operator(totdeg, ν, radial, L, L, n_orbs, n_orbs; categories = categories, _get_cat = _get_cat, d = d, group = group, isState = isState, isreal = isreal)
+
+
+function equivariant_operator(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis, L1::Int64, L2, Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); categories=[], d=3, group="O3", isState=true, isreal = true)
+    filter = RPE_filter_long(L1+L2)
+    # equivariant_operator(_close(nn, ll; filter = filter), radial, maximum(L1,L2), n_orbs; categories = categories, _get_cat = _get_cat, d = d, group = group, isState = isState, isreal = isreal)
+    equivariant_operator(_close(nn, ll; filter = filter), radial, L1+L2, n_orbs; categories = categories, _get_cat = _get_cat, d = d, group = group, isState = isState, isreal = isreal)
 end
+
+equivariant_operator(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis, L::Int64, n_orbs::Vector{Int64}=ones(Int64,L+1); categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState=true, isreal = true) = 
+    equivariant_operator(nn, ll, radial, L, L, n_orbs, n_orbs; categories = categories, _get_cat = _get_cat, d = d, group = group, isState = isState, isreal = isreal)

@@ -1,5 +1,6 @@
 using EquivariantModels, Polynomials4ML, Lux, Random
-using EquivariantModels: simple_radial_basis, Radial_basis, append_layer
+using EquivariantModels: simple_radial_basis, Radial_basis, append_layer, simple_extension
+using Polynomials4ML: ScalarPoly4MLBasis, lux, natural_indices
 
 include("utils/transformations.jl")
 include("utils/extended_eqm.jl")
@@ -74,11 +75,15 @@ eval_model(model::AbstractModel, x::Union{State{T}, Vector{State{T}}}) where {T}
 #     return density_model(on_model, [])
 # end
 
-# radial basis for onsite
+# Standard cutoff function
+fcut(rcut::Float64,pin::Int=2,pout::Int=2) = r -> (r < rcut ? abs( (r/rcut)^pin - 1)^pout : 0)
+
+# radial basis for Onsite
 function onsite_radial(maxdeg::Int64,rcut::Float64; pin::Int=2, pout::Int=2, r0::Float64=2.0, p::Int=2)
-    fcut(rcut::Float64,pin::Int=pin,pout::Int=pout) = r -> (r < rcut ? abs( (r/rcut)^pin - 1)^pout : 0)
+    # fcut(rcut::Float64,pin::Int=pin,pout::Int=pout) = r -> (r < rcut ? abs( (r/rcut)^pin - 1)^pout : 0)
     ftrans(r0::Float64=r0,p::Int=p) = r -> ( (1+r0)/(1+r) )^p
     return EquivariantModels.simple_radial_basis(legendre_basis(maxdeg),fcut(rcut),ftrans())
+    # TODO: something wrong with simple_radial_basis - cutoff is done for something before transformation
 end
 
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
@@ -87,8 +92,45 @@ On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::I
 
 
 # radial basis for Offsite
+function f_env_offsite(r,rbond,be::Bool,rcut::Float64,zcut::Float64,pin::Int=2,pout::Int=2)
+    lbond = norm(rbond)
+    z = dot(r,rbond)/lbond
+    rr = norm(r - z*rbond)
+    if be == true
+        return fcut(rcut,pin,pout)(norm(r))
+    else be == false
+        return fcut(rcut,pin,pout)(rr) * fcut(zcut+lbond/2,pin,pout)(z)
+    end
+end
 
-# single offsite basis
+# function offsite_radial_basis(basis::ScalarPoly4MLBasis,f_cut::Function=r->1,f_trans::Function=r->r; spec = nothing)
+function offsite_radial_basis(maxdeg::Int64, rcut::Float64=5.0, zcut::Float64=5.0; r0::Float64=2.0, p::Int=2)
+    basis = legendre_basis(maxdeg)
+    spec = natural_indices(basis)
+    # if isnothing(spec)
+    #    try 
+    #       spec = natural_indices(basis)
+    #    catch 
+    #       error("The specification of this Radial_basis should be given explicitly!")
+    #    end
+    # end
+    ftrans = r -> ( (1+r0)/(1+r) )^p
+    _norm(x) = norm(x.rr)
+    return Radial_basis(Chain(split = Lux.Parallel(nothing; trans = WrappedFunction(x -> ftrans.(_norm.(x))), id = WrappedFunction(identity)), evaluation = Lux.Parallel(nothing; poly = lux(basis), cutoff = WrappedFunction(x -> [ f_env_offsite(x[i].rr,x[i].rr0,x[i].bond,rcut,zcut) for i = 1:length(x)])), env = WrappedFunction(x -> x[1].*x[2]), ), spec)
+ end
+
+# get the categories of a offsite state
+ _get_cat_offsite(x) = [ (x[i].Zi,x[i].Zj,x[i].Zk,x[i].bond) for i = 1:length(x) ]
+ count_bond(bb) = sum( bb[i].s[4] for i = 1:length(bb) )
+ function offsite_extension(AAspec, catagories)
+    AAspec = simple_extension(AAspec, catagories)
+    filter!(bb -> length(bb) > 0 && count_bond(bb) == 1, AAspec)
+    return AAspec
+ end
+
+# An offsite submodel - input is a (local) two-center environment, output is the corresponding offsite block of the density matrix
+Off_Model(maxdeg::Int64, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1)) where {T} = 
+                Off_Model(equivariant_operator(maxdeg,ord,offsite_radial_basis(maxdeg, rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension)..., false)
 
 # adhoc code transforming an output of on or off model to a sub density matrix
 function sub_densitymatrix(x::NTuple{Len,Vector{Matrix{T}}}) where {Len, T}

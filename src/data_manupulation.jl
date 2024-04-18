@@ -27,11 +27,11 @@ function get_state(R,I,J)
         @assert I <= length(R)
         return [State(rr = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z) for J in setdiff(1:length(R), [I])]
     else
-        # Offsite local environment - we have several options and here comes just one of them
+        # Offsite local environment - we have several options and here comes just one of them that centers the environment at atom I
         # TODO: Implement the other options
         @assert I <= length(R) && J <= length(R)
-        RIJ = [State(rr = R[K].rr - R[I].rr, rr0 = R[J].rr - R[I].rr, ZK = R[K].Z, ZI = R[I].Z, ZJ = R[J].Z, bond = false) for K in setdiff(1:length(R), [I,J])]
-        push!(RIJ, State(rr = R[J].rr - R[I].rr, rr0 = R[J].rr - R[I].rr, ZK = R[J].Z, ZI = R[I].Z, ZJ = R[J].Z, bond = true))
+        RIJ = [State(rr = SVector{3}(R[K].rr - R[I].rr), rr0 = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z, Zk = R[K].Z, bond = false) for K in setdiff(1:length(R), [I,J])]
+        push!(RIJ, State(rr = SVector{3}(R[J].rr - R[I].rr), rr0 = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z, Zk = R[J].Z, bond = true))
     end
 end
 
