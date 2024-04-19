@@ -20,7 +20,7 @@ fit!(DM, frames; solver = ACEfit.QR())
 
 # evaluate the model
 R, D = translate_frame(frames[1])["R"], translate_frame(frames[1])["D"] # an example configuration and its corresponding density matrix
-D_pred = eval_model(DM, R, frame["Basis set labels"]) # predicted density matrix
+D_pred = eval_model(DM, R, translate_frame(frames[1])["ao_labels"]) # predicted density matrix
 
 # error
 E = D_pred - D |> maximum
@@ -28,3 +28,8 @@ E = D_pred - D |> maximum
 # visualize the error
 E = abs.(D_pred - D)
 contourf(E)
+
+# Manifold violation
+norm(D * D - D)
+norm(D_pred * D_pred - D_pred)
+@assert norm(D_pred * D_pred - D_pred) ≤ (2*norm(D)+2)*norm(E) # an extremely rough error bound
