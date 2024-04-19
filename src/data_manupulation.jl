@@ -18,7 +18,7 @@ function translate_frame(frame::Dict{String,Array})
     C = apply_reorder(frame["Basis set labels"], C; debug=false) # Reorder the basis set
     D = C * C' # Density matrix with correct ordering and on the manifold
 
-    return (R, D)
+    return Dict("R"=>R, "D"=>D, "ao_labels"=>frame["Basis set labels"], "atomic_numbers"=>Zs)
 end
 
 function get_state(R,I,J)

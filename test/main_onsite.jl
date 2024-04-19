@@ -20,7 +20,7 @@ onsite_model = On_Model(maxdeg, ord, rcut, Zi, Zs, Lmax, n_orbs)
 molecule = TrajectoryHDF5("data/propanol.h5")
 
 frame = read_frame(molecule,2)
-R, D = translate_frame(frame)
+R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
 R11 = get_state(R,1,1)
 @time eval_model(onsite_model, R11)
 
@@ -33,7 +33,7 @@ i = 1
 molecule = TrajectoryHDF5("data/propanol.h5")
 while length(Rs) < N_data
     frame = read_frame(molecule,i)
-    R, D = translate_frame(frame)
+    R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
     kk = rand([1,5,8])
     @assert frame["Atomic numbers"][kk] == 6.0
     Rkk = get_state(R,kk,kk)
@@ -86,7 +86,7 @@ i = 1
 while length(Rin) < N_data
     frame = read_frame(molecule,i)
     @assert frame["Atomic numbers"][1] == 6.0
-    R, D = translate_frame(frame)
+    R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
     kk = rand([1,5,8])
     Rkk = get_state(R,kk,kk)
     Dkk = get_block(D,kk,kk,frame["Basis set labels"])
@@ -121,7 +121,7 @@ i = 5001
 while length(Rext) < N_data
     frame = read_frame(molecule,i)
     @assert frame["Atomic numbers"][1] == 6.0
-    R, D = translate_frame(frame)
+    R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
     kk = rand([1,5,8])
     Rkk = get_state(R,kk,kk)
     Dkk = get_block(D,kk,kk,frame["Basis set labels"])
@@ -163,6 +163,6 @@ scatter!(Yexts[smallest][posi], Yextss[smallest][posi], label = "Extrapolation T
 # molecule = TrajectoryHDF5("data/propanol.h5")
 
 # frame = read_frame(molecule,1)
-# R, D = translate_frame(frame)
+# R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
 # R11 = get_state(R,1,1)
 # @time eval_model(onsite_model, R11) - D[1:14,1:14] |> norm

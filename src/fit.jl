@@ -6,6 +6,7 @@ using Setfield, LinearAlgebra, ACEfit
 #     Rs: a vector of State objects <==> {R_II}_I
 #     Ys: a vector of matrices <==> D_II
 # ```
+# TODO : think about what is the best way to incorporate the regularization term (in solver? in line? in variables?)
 
 function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}; Γ = I, λ = 1e-12, solver = ACEfit.LSQR(damp = 0, atol = 1e-6)) where {T, TY}
     TP = typeof(model)
@@ -60,5 +61,50 @@ function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{Sta
     model = (TP <: On_Model) ? TP(model.model, model.ps, model.st, model.n_orbs, true) : TP(model.model, model.ps, model.st, model.n_orbs1, model.n_orbs2, true)
     # @show model.ps.dot[1].W
     # @show model.fitted
+    return model
+end
+
+function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union{T,Tuple{T,T}}}) where T
+    Rs = Dict(key => [] for key in keys)
+    Ys = Dict(key => [] for key in keys)
+    
+    for frame in frames
+        f = translate_frame(frame)
+        for key in keys
+        if typeof(key) == T
+                for i in findall(x->x==key, f["atomic_numbers"])
+                    push!(Rs[key], get_state(f["R"], i, i))
+                    push!(Ys[key], get_block(f["D"], i, i, f["ao_labels"]))
+                end
+            else
+                i, j = key
+                for ii in findall(x->x==i, f["atomic_numbers"])
+                    for jj in setdiff(findall(x->x==j, f["atomic_numbers"]),ii)
+                        push!(Rs[key], get_state(f["R"], ii, jj))
+                        push!(Ys[key], get_block(f["D"], ii, jj, f["ao_labels"]))
+                    end
+                end
+            end
+        end
+    end
+
+    return Rs, Ys
+end
+
+# Fit a whole Density_Model.
+# Here, frames can be non_franslated frame (directly read from data) which will be in transfer to a readable format (i.e. translate_frame) in split_data function.
+# The function should return a fitted Density_Model
+function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.LSQR(damp = 0, atol = 1e-6))
+    Rs, Ys = split_data(frames, keys(model.Models))
+    for key in keys(model.Models)
+        typeof(key) <: Tuple ? println("Fitting for ($(key[1]),$(key[2])) offsite model") : println("Fitting for $(key) onsite model")
+        if length(Rs[key]) == 0 || length(Ys[key]) == 0
+            continue
+        end
+        model.Models[key] = fit!(model.Models[key], identity.(Rs[key]), identity.(Ys[key]); solver = solver)
+    end
+    if !isfitted(model)
+        @warn("Some models are not fitted because there is a lack of corresponding data...")
+    end
     return model
 end

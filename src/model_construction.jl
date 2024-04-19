@@ -42,7 +42,7 @@ struct Density_Model{T}
 end
 
 isfitted(model::AbstractModel) = model.fitted
-isfitted(model::Density_Model) = all(isfitted.(model.On_Models)) && all(isfitted.(model.Off_Models))
+isfitted(model::Density_Model) = all(isfitted(model.Models[key]) for key in keys(model.Models))
 get_L(model::On_Model{L}) where L = (L-1,L-1)
 get_L(model::Off_Model{L1,L2}) where {L1, L2} = (L1-1,L2-1)
 get_norbs(model::On_Model) = (model.n_orbs,model.n_orbs)
