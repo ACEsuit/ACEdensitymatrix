@@ -55,13 +55,13 @@ eval_model(model::AbstractModel, x::Union{State{T}, Vector{State{T}}}) where {T}
 # Output: a Density Model that contains all the On_Models and Off_Models, storing as Dictionary
 # When evaluating a Density Model, the model should not only know a whole State, but also the ao_labels
 function Density_Model(ao_dict::Dict)
-    Zs = Int.(collect(keys(ao_dict)))
+    Zs = Int.(collect(keys(ao_dict))) |> sort # Here we assume that the atoms are symbolized by their atomic numbers which are integers
     T = typeof(Zs[1])
     dict = Dict{Union{T,Tuple{T,T}},AbstractModel}()
     for i = 1:length(Zs)
         push!(dict, Zs[i] => On_Model(ao_dict[Zs[i]]["maxdeg"], ao_dict[Zs[i]]["ord"], ao_dict[Zs[i]]["rcut"], Zs[i], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"]))
         # in principle, j should start from i because we can then use the symmetry of the density matrix but let's keep it for now
-        for j = 1:length(Zs)
+        for j = i:length(Zs)
             # cutoff here is not so correct but let's keep it for now
             push!(dict, (Zs[i],Zs[j]) => Off_Model(ao_dict[Zs[i]]["maxdeg"], ao_dict[Zs[i]]["ord"], maximum([ao_dict[Zs[i]]["rcut"], ao_dict[Zs[j]]["rcut"]]), maximum([ao_dict[Zs[i]]["zcut"], ao_dict[Zs[j]]["zcut"]]), Zs[i], Zs[j], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, length(ao_dict[Zs[j]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"], ao_dict[Zs[j]]["n_orbs"]))
         end
@@ -69,21 +69,43 @@ function Density_Model(ao_dict::Dict)
     return Density_Model(dict)
 end
 
-# function density_model(maxdeg, ord, cutoffs, Zs, n_orbs)
-#     on_bases = []
-#     on_params = []
-#     for (i,Zi) in enumerate(Zs)
-#         Lmax = length(n_orbs[i])-1
-#         radial = onsite_radial(maxdeg, cutoffs)
-#         push!(on_bases, onsite_basis(maxdeg, ord, radial, Zi, Zs, Lmax))
-#         on_param = [ zeros(size(basis.xx2BB.contents.layers.AA2BB.layers[i].op,1)) for i in 1:(Lmax+1)^2 ]
-#         push!(on_params, on_param)
-#     end
+function eval_model(model::Density_Model, R::Union{State{T}, Vector{State{T}}}, ao_labels::Union{Vector{String},Matrix{String}}) where {T}
+    # R is a global configuration - a State or a vector of State objects
+    # ao_labels is the labels of atoms and the corresponding basis sets
+    # the output is the density matrix, ordering as the ao_labels
 
-#     on_model = on_model(on_bases, on_params, false)
+    ao_labels = apply_reorder(ao_labels) # with this line, we fit the reordered Density matrix in the correct order but need to map it back to the original order
 
-#     return density_model(on_model, [])
-# end
+    atom_ids, atom_symbols, shells, ls, ms = unpack(ao_labels)
+    atom_ids .+= 1
+
+    D = zeros(Float64,length(atom_ids),length(atom_ids))
+
+    for I = 1:length(R)
+        for J = I:length(R)
+            pos_I = findall(x->x==I, atom_ids)
+            pos_J = findall(x->x==J, atom_ids)
+            if I == J
+                md = model.Models[R[I].Z]
+                D[pos_I,pos_J] = sub_densitymatrix(md.model(get_state(R,I,I), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...)
+                D[pos_J,pos_I] = (D[pos_J,pos_I] + D[pos_I,pos_J]') / 2
+            else
+                if R[I].Z > R[J].Z
+                    md = model.Models[(R[J].Z,R[I].Z)]
+                    D[pos_J,pos_I] = sub_densitymatrix(md.model(get_state(R,J,I), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...)
+                    D[pos_I,pos_J] = D[pos_J,pos_I]'
+                else
+                    md = model.Models[(R[I].Z,R[J].Z)]
+                    D[pos_I,pos_J] = sub_densitymatrix(md.model(get_state(R,I,J), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...)
+                    D[pos_J,pos_I] = D[pos_I,pos_J]'
+                end
+            end
+        end
+    end
+
+    return D
+    
+end
 
 # Standard cutoff function
 fcut(rcut::Float64,pin::Int=2,pout::Int=2) = r -> (r < rcut ? abs( (r/rcut)^pin - 1)^pout : 0)
@@ -144,7 +166,7 @@ Off_Model(maxdeg::Int64, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T,
 
 # adhoc code transforming an output of on or off model to a sub density matrix
 function sub_densitymatrix(x::NTuple{Len,Vector{Matrix{T}}},L1::Int64,L2::Int64,n_orbs1::Union{Vector{Int64},SVector{L3,Int64}},n_orbs2::Union{Vector{Int64},SVector{L4,Int64}};sym = false) where {Len, L3, L4, T}
-    @assert Len == (L1+1)*(L2+1)
+    @assert Len == (L1+1)*(L2+1) && L3 == L1 + 1 && L4 == L2 + 1
     LLset = [(l1,l2) for l1 = 0:L1 for l2 = 0:L2]
 
     # @assert unique(LLset) == LLset
@@ -160,5 +182,5 @@ function sub_densitymatrix(x::NTuple{Len,Vector{Matrix{T}}},L1::Int64,L2::Int64,
         end
     end
 
-    return sym = true ? H : (H + H')/2
+    return sym == true ? (H + H')/2 : H
 end
