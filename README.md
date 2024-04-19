@@ -17,3 +17,5 @@ to set up the Julia environment.
 This repo also uses a developing version of `ACELuxOperators.jl`, which is not yet released and hence some code in this repo is directly "hacked" from ACELuxOperators.jl, which is also written by the author. 
 
 This should be fixed once `ACELuxOperators.jl` is released.
+
+This repo is to be modularized...
