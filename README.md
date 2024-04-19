@@ -6,11 +6,13 @@ A note before using it is that this repo relies on a developing version of `Poly
 
 One should run 
 
-```julia 
-]add `https://github.com/ACEsuit/Polynomials4ML.jl#generic_linear
+```julia
+]activate .
+
+add `https://github.com/ACEsuit/Polynomials4ML.jl#generic_linear
 ```
 
-when setting up the Julia environment. 
+to set up the Julia environment. 
 
 This repo also uses a developing version of `ACELuxOperators.jl`, which is not yet released and hence some code in this repo is directly "hacked" from ACELuxOperators.jl, which is also written by the author. 
 
