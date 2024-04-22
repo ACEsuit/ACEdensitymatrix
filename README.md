@@ -21,8 +21,8 @@ This should be fixed once `ACELuxOperators.jl` is released.
 TODO: 
 
 - [ ] (Outside this repo) Release `ACELuxOperators.jl`
-- [ ] Optimize output print out
-- [ ] Modify Onsite radial basis (something not very elegant now)
+- [x] Optimize output print out
+- [x] Modify Onsite radial basis (something not very elegant now)
 - [ ] Implement other offsite-state constructions (including cutoff)
 - [ ] Efficiency optimization
 - [ ] Modularization
