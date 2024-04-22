@@ -24,6 +24,7 @@ TODO:
 - [x] Optimize output print out
 - [x] Modify Onsite radial basis (something not very elegant now)
 - [ ] Implement other offsite-state constructions (including cutoff)
+- [ ] Figure out a way to save a constructed lux chain (basically A2Bmap)
 - [ ] Efficiency optimization
 - [ ] Modularization
 - [ ] ...?
