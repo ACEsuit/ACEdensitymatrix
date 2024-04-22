@@ -18,6 +18,22 @@ function specnlm2spec1p(spec_nlm)
     return spec1p, lmax, nmax + 1
 end
 
+# TODO: Another patch to EquivariantModels.simple_radial_basis - cutoff is done for something before transformation
+import EquivariantModels: simple_radial_basis
+function simple_radial_basis(basis::ScalarPoly4MLBasis,f_cut::Function=r->1,f_trans::Function=r->r; spec = nothing, isState = false)
+    if isnothing(spec)
+        try 
+           spec = natural_indices(basis)
+        catch 
+           error("The specification of this Radial_basis should be given explicitly!")
+        end
+     end
+  
+     _norm(x) = isState ? norm(x.rr) : norm(x)
+     return Radial_basis(Chain(split = Lux.Parallel(nothing; trans = WrappedFunction(x -> f_trans.(_norm.(x))), id = WrappedFunction(identity)), evaluation = Lux.Parallel(nothing; poly = lux(basis), cutoff = WrappedFunction(x -> f_cut.(_norm.(x)))), env = WrappedFunction(x -> x[1].*x[2]), ), spec)
+     # return Radial_basis(Chain(trans = WrappedFunction(x -> f_trans.(_norm.(x))), evaluation = Lux.BranchLayer(poly = lux(basis), cutoff = WrappedFunction(x -> f_cut.(x))), env = WrappedFunction(x -> x[1].*x[2]), ), spec)
+end
+
 abstract type AbstractModel end
 
 struct On_Model{L} <: AbstractModel where L 
@@ -63,7 +79,8 @@ function Density_Model(ao_dict::Dict)
         # in principle, j should start from i because we can then use the symmetry of the density matrix but let's keep it for now
         for j = i:length(Zs)
             # cutoff here is not so correct but let's keep it for now
-            push!(dict, (Zs[i],Zs[j]) => Off_Model(ao_dict[Zs[i]]["maxdeg"], ao_dict[Zs[i]]["ord"], maximum([ao_dict[Zs[i]]["rcut"], ao_dict[Zs[j]]["rcut"]]), maximum([ao_dict[Zs[i]]["zcut"], ao_dict[Zs[j]]["zcut"]]), Zs[i], Zs[j], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, length(ao_dict[Zs[j]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"], ao_dict[Zs[j]]["n_orbs"]))
+            # same for the degree and order - how to determine them for offsite - change the input?
+            push!(dict, (Zs[i],Zs[j]) => Off_Model(maximum([ao_dict[Zs[i]]["maxdeg"],ao_dict[Zs[j]]["maxdeg"]]), maximum([ao_dict[Zs[i]]["ord"],ao_dict[Zs[i]]["ord"]]), maximum([ao_dict[Zs[i]]["rcut"], ao_dict[Zs[j]]["rcut"]]), maximum([ao_dict[Zs[i]]["zcut"], ao_dict[Zs[j]]["zcut"]]), Zs[i], Zs[j], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, length(ao_dict[Zs[j]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"], ao_dict[Zs[j]]["n_orbs"]))
         end
     end
     return Density_Model(dict)
@@ -115,7 +132,6 @@ function onsite_radial(maxdeg::Int64,rcut::Float64; pin::Int=2, pout::Int=2, r0:
     # fcut(rcut::Float64,pin::Int=pin,pout::Int=pout) = r -> (r < rcut ? abs( (r/rcut)^pin - 1)^pout : 0)
     ftrans(r0::Float64=r0,p::Int=p) = r -> ( (1+r0)/(1+r) )^p
     return EquivariantModels.simple_radial_basis(legendre_basis(maxdeg),fcut(rcut),ftrans())
-    # TODO: something wrong with simple_radial_basis - cutoff is done for something before transformation
 end
 
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
@@ -172,15 +188,15 @@ function sub_densitymatrix(x::NTuple{Len,Vector{Matrix{T}}},L1::Int64,L2::Int64,
     # @assert unique(LLset) == LLset
     len1 = sum( (2i-1) * n_orbs1[i] for i = 1:length(n_orbs1) )
     len2 = sum( (2i-1) * n_orbs2[i] for i = 1:length(n_orbs2) )
-    H = zeros(T,len1,len2)
+    D = zeros(T,len1,len2)
     for (t,(l1,l2)) in enumerate(LLset)
         pos_init_x = l1 == 0 ? 1 : sum( (2i+1) * n_orbs1[i+1] for i = 0:l1-1 ) + 1
         pos_init_y = l2 == 0 ? 1 : sum( (2i+1) * n_orbs2[i+1] for i = 0:l2-1 ) + 1
         ijset = [(i,j) for i = 1:n_orbs1[l1+1] for j = 1:n_orbs2[l2+1]]
         for (k,(i,j)) in enumerate(ijset)
-            H[pos_init_x + (2l1+1) * (i-1) : pos_init_x + (2l1+1) * i - 1, pos_init_y + (2l2+1) * (j-1) : pos_init_y + (2l2+1) * j - 1] = x[t][k]
+            D[pos_init_x + (2l1+1) * (i-1) : pos_init_x + (2l1+1) * i - 1, pos_init_y + (2l2+1) * (j-1) : pos_init_y + (2l2+1) * j - 1] = x[t][k]
         end
     end
 
-    return sym == true ? (H + H')/2 : H
+    return sym == true ? (D + D')/2 : D
 end

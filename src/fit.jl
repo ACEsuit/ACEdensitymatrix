@@ -7,6 +7,10 @@ using Setfield, LinearAlgebra, ACEfit
 #     Ys: a vector of matrices <==> D_II
 # ```
 # TODO : think about what is the best way to incorporate the regularization term (in solver? in line? in variables?)
+Dict_Int2Spec = Dict(1 => "H", 6 => "C", 7 => "N", 8 => "O")
+Dict_Int2Orbs = Dict(0 => "S", 1 => "P", 2 => "D", 3 => "F")
+Dict_Spec2Int = Dict("H" => 1, "C" => 6, "N" => 7, "O" => 8)
+Dict_Orbs2Int = Dict("S" => 0, "P" => 1, "D" => 2, "F" => 3)
 
 function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}; Γ = I, λ = 1e-12, solver = ACEfit.LSQR(damp = 0, atol = 1e-6)) where {T, TY}
     TP = typeof(model)
@@ -18,8 +22,8 @@ function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{Sta
     layer_set = Symbol.(layer_set)
 
     for (i, (l1,l2)) in enumerate(LLset)
-        println("Fitting for l1 = $l1, l2 = $l2")
-        println()
+        # println("Fitting for l1 = $l1, l2 = $l2")
+        # println()
         
         # C can simply be a vector - saving memory
         C = zeros(eltype(model.ps.dot[i].W),size(model.ps.dot[i].W)...)
@@ -36,8 +40,7 @@ function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{Sta
         
         for kk = 1 : size(C, 1)
             ii, jj = k2ij(kk, n_orbs1[l1+1], n_orbs2[l2+1])
-            println("Fitting the ($ii,$jj)-th ($l1,$l2) block")
-            println()
+            println("Fitting the ($ii,$jj)-th $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) block")
             
             Yij = [ get_Y(Ys[t], n_orbs1, n_orbs2, l1, l2, ii, jj) for t = 1:length(Ys) ]
 
@@ -50,10 +53,10 @@ function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{Sta
 
             # solve for C[kk]
             C[kk,:] = ACEfit.solve(solver, A, Y)["C"]
+            println("RMSE = $(norm(A*C[kk,:] - Y) / sqrt(length(Y)))")
+            println()
             # list of potential solvers: ACEfit: QR, LSQR, RRQR, SKLEARN_BRR, SKLEARN_ARD, BLR, TruncatedSVD...
 
-            @show norm(A * C[kk,:] - Y)
-            # @show C[kk,:]
         end
         @set! model.ps.dot.$(layer_set[i]).W = C
     end
@@ -71,7 +74,7 @@ function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union
     for frame in frames
         f = translate_frame(frame)
         for key in keys
-        if typeof(key) == T
+            if typeof(key) == T
                 for i in findall(x->x==key, f["atomic_numbers"])
                     push!(Rs[key], get_state(f["R"], i, i))
                     push!(Ys[key], get_block(f["D"], i, i, f["ao_labels"]))
@@ -91,13 +94,14 @@ function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union
     return Rs, Ys
 end
 
-# Fit a whole Density_Model.
-# Here, frames can be non_franslated frame (directly read from data) which will be in transfer to a readable format (i.e. translate_frame) in split_data function.
+# Fit a whole Density_Model
+# Here, frames can be non_franslated frame (directly read from data) which will be transfer to a readable format (i.e. translate_frame) in split_data function
 # The function should return a fitted Density_Model
 function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.LSQR(damp = 0, atol = 1e-6))
     Rs, Ys = split_data(frames, keys(model.Models))
     for key in keys(model.Models)
-        typeof(key) <: Tuple ? println("Fitting for ($(key[1]),$(key[2])) offsite model") : println("Fitting for $(key) onsite model")
+        typeof(key) <: Tuple ? println("=== Fitting for $(Dict_Int2Spec[key[1]])-$(Dict_Int2Spec[key[2]]) offsite model ===") : println("==== Fitting for $(Dict_Int2Spec[key]) onsite model ====")
+        println()
         if length(Rs[key]) == 0 || length(Ys[key]) == 0
             continue
         end
