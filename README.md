@@ -23,6 +23,7 @@ This repo is to be modularized...
 TODO: 
 
 - [ ] (Outside this repo) Release `ACELuxOperators.jl`
+- [ ] Optimize output print out
 - [ ] Modify Onsite radial basis (something not very elegant now)
 - [ ] Implement other offsite-state constructions (including cutoff)
 - [ ] Efficiency optimization
