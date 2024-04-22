@@ -19,3 +19,12 @@ This repo also uses a developing version of `ACELuxOperators.jl`, which is not y
 This should be fixed once `ACELuxOperators.jl` is released.
 
 This repo is to be modularized...
+
+TODO: 
+
+- [ ] (Outside this repo) Release `ACELuxOperators.jl`
+- [ ] Modify Onsite radial basis (something not very elegant now)
+- [ ] Implement other offsite-state constructions (including cutoff)
+- [ ] Efficiency optimization
+- [ ] Modularization
+- [ ] ...?
