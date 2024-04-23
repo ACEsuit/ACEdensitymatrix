@@ -80,7 +80,7 @@ function Density_Model(ao_dict::Dict)
         for j = i:length(Zs)
             # cutoff here is not so correct but let's keep it for now
             # same for the degree and order - how to determine them for offsite - change the input?
-            push!(dict, (Zs[i],Zs[j]) => Off_Model(maximum([ao_dict[Zs[i]]["maxdeg"],ao_dict[Zs[j]]["maxdeg"]]), maximum([ao_dict[Zs[i]]["ord"],ao_dict[Zs[i]]["ord"]]), maximum([ao_dict[Zs[i]]["rcut"], ao_dict[Zs[j]]["rcut"]]), maximum([ao_dict[Zs[i]]["zcut"], ao_dict[Zs[j]]["zcut"]]), Zs[i], Zs[j], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, length(ao_dict[Zs[j]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"], ao_dict[Zs[j]]["n_orbs"]))
+            push!(dict, (Zs[i],Zs[j]) => Off_Model(maximum([ao_dict[Zs[i]]["maxdeg"],ao_dict[Zs[j]]["maxdeg"]]), maximum([ao_dict[Zs[i]]["ord"],ao_dict[Zs[i]]["ord"]])+1, maximum([ao_dict[Zs[i]]["rcut"], ao_dict[Zs[j]]["rcut"]]), maximum([ao_dict[Zs[i]]["zcut"], ao_dict[Zs[j]]["zcut"]]), Zs[i], Zs[j], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, length(ao_dict[Zs[j]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"], ao_dict[Zs[j]]["n_orbs"]))
         end
     end
     return Density_Model(dict)
