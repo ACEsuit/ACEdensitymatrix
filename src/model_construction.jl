@@ -141,13 +141,26 @@ On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::I
 
 # radial basis for Offsite
 function f_env_offsite(r,rbond,be::Bool,rcut::Float64,zcut::Float64,pin::Int=2,pout::Int=2)
-    lbond = norm(rbond)
+    lbond = norm(rbond) # length of bond
     z = dot(r,rbond)/lbond
     rr = norm(r - z*rbond)
+    z = abs(z - lbond/2)
     if be == true
         return fcut(rcut,pin,pout)(norm(r))
     else be == false
         return fcut(rcut,pin,pout)(rr) * fcut(zcut+lbond/2,pin,pout)(z)
+    end
+end
+
+# new radial basis for Offsite - two seperated spheries with the same cutoff (should be different though)
+function f_env_offsite_new(r,rbond,be::Bool,rcut::Float64,zcut::Float64,pin::Int=2,pout::Int=2)
+    # lbond = norm(rbond) # length of bond
+    rrI = norm(r + rbond)
+    rrJ = norm(r - rbond)
+    if be == true
+        return fcut(rcut,pin,pout)(norm(r))
+    else be == false
+        return fcut(rcut,pin,pout)(rrI) * fcut(rcut,pin,pout)(rrJ)
     end
 end
 
