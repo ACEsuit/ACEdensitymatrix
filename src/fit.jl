@@ -64,7 +64,7 @@ function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{Sta
     model = (TP <: On_Model) ? TP(model.model, model.ps, model.st, model.n_orbs, true) : TP(model.model, model.ps, model.st, model.n_orbs1, model.n_orbs2, true)
     # @show model.ps.dot[1].W
     # @show model.fitted
-    return model
+    # return model
 end
 
 function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union{T,Tuple{T,T}}}) where T
@@ -110,5 +110,5 @@ function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dic
     if !isfitted(model)
         @warn("Some models are not fitted because there is a lack of corresponding data...")
     end
-    return model
+    # return model
 end
