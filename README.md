@@ -9,7 +9,7 @@ One should run
 ```julia
 ]activate .
 
-add `https://github.com/ACEsuit/Polynomials4ML.jl#generic_linear
+add https://github.com/ACEsuit/Polynomials4ML.jl#generic_linear
 ```
 
 to set up the Julia environment. 
