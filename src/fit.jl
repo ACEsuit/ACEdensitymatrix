@@ -12,7 +12,7 @@ Dict_Int2Orbs = Dict(0 => "S", 1 => "P", 2 => "D", 3 => "F")
 Dict_Spec2Int = Dict("H" => 1, "C" => 6, "N" => 7, "O" => 8)
 Dict_Orbs2Int = Dict("S" => 0, "P" => 1, "D" => 2, "F" => 3)
 
-function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}; Γ = I, λ = 1e-12, solver = ACEfit.LSQR(damp = 0, atol = 1e-6)) where {T, TY}
+function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}; solver = ACEfit.SKLEARN_BRR()) where {T, TY}
     TP = typeof(model)
     LLset = [(l1,l2) for l2 in 0:get_L(model)[2], l1 in 0:get_L(model)[1]]
     n_orbs1, n_orbs2 = get_norbs(model)
@@ -22,9 +22,10 @@ function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{Sta
     layer_set = Symbol.(layer_set)
 
     for (i, (l1,l2)) in enumerate(LLset)
-        # println("Fitting for l1 = $l1, l2 = $l2")
-        # println()
+        println("Fitting the $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) blocks ...")
+        println()
         
+        RMSE = 0
         # C can simply be a vector - saving memory
         C = zeros(eltype(model.ps.dot[i].W),size(model.ps.dot[i].W)...)
         # construct A
@@ -41,7 +42,7 @@ function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{Sta
         
         for kk = 1 : size(C, 1)
             ii, jj = k2ij(kk, n_orbs1[l1+1], n_orbs2[l2+1])
-            println("Fitting the ($ii,$jj)-th $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) block")
+            # println("Fitting the ($ii,$jj)-th $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) block ...")
             
             Yij = [ get_Y(Ys[t], n_orbs1, n_orbs2, l1, l2, ii, jj) for t = 1:length(Ys) ]
 
@@ -53,12 +54,14 @@ function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{Sta
             # Y = [Y; zeros(num)]
 
             # solve for C[kk]
-            C[kk,:] = ACEfit.solve(solver, A, Y)["C"]
-            println("RMSE = $(norm(A*C[kk,:] - Y) / sqrt(length(Y)))")
-            println()
+            C[kk,:] = ACEfit.solve(solver, A, Y)["C"];
             # list of potential solvers: ACEfit: QR, LSQR, RRQR, SKLEARN_BRR, SKLEARN_ARD, BLR, TruncatedSVD...
-
+            
+            RMSE += norm(A*C[kk,:] - Y)^2/length(Y)
         end
+        println("RMSE = $(sqrt(RMSE/length(LLset)))")
+        println()
+        
         @set! model.ps.dot.$(layer_set[i]).W = C
     end
     
