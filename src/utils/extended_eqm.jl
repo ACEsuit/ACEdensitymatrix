@@ -152,6 +152,7 @@ end
 #    return Aspec, AAspec # Aspecgetspecnlm(spec1p, spec)
 # end
 
+# Can add a reduce = true/false option to simplify onsite basis
 function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true)
 
    # first filt out those unfeasible spec_nlm
@@ -184,12 +185,9 @@ function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::In
    luxchain = append_layer(luxchain, l_sym; l_name = :AA2BB)
 
    if isreal
-       l_c2r = Lux.Parallel(nothing, [WrappedFunction(x -> real.(Ref(ctran(l1)) .* x .* Ref(ctran(l2)'))) for (l1,l2) in LLset]... )
+       l_c2r = Lux.Parallel(nothing, [WrappedFunction(x -> identity.(real.(Ref(ctran(l1)) .* x .* Ref(ctran(l2)')))) for (l1,l2) in LLset]... )
        luxchain = append_layer(luxchain, l_c2r; l_name = :complex2real)
    end
-
-   l_id = Lux.Parallel(nothing, [WrappedFunction(x -> identity.(x)) for i in 1:length(LLset)]... )
-   luxchain = append_layer(luxchain, l_id; l_name = :TypeStablization)
 
    ps, st = Lux.setup(MersenneTwister(1234), luxchain)
    
