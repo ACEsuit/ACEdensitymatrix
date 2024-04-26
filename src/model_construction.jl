@@ -76,11 +76,10 @@ function Density_Model(ao_dict::Dict)
     dict = Dict{Union{T,Tuple{T,T}},AbstractModel}()
     for i = 1:length(Zs)
         push!(dict, Zs[i] => On_Model(ao_dict[Zs[i]]["maxdeg"], ao_dict[Zs[i]]["ord"], ao_dict[Zs[i]]["rcut"], Zs[i], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"]))
-        # in principle, j should start from i because we can then use the symmetry of the density matrix but let's keep it for now
         for j = i:length(Zs)
             # cutoff here is not so correct but let's keep it for now
             # same for the degree and order - how to determine them for offsite - change the input?
-            push!(dict, (Zs[i],Zs[j]) => Off_Model(maximum([ao_dict[Zs[i]]["maxdeg"],ao_dict[Zs[j]]["maxdeg"]]), maximum([ao_dict[Zs[i]]["ord"],ao_dict[Zs[i]]["ord"]])+1, maximum([ao_dict[Zs[i]]["rcut"], ao_dict[Zs[j]]["rcut"]]), maximum([ao_dict[Zs[i]]["zcut"], ao_dict[Zs[j]]["zcut"]]), Zs[i], Zs[j], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, length(ao_dict[Zs[j]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"], ao_dict[Zs[j]]["n_orbs"]))
+            push!(dict, (Zs[i],Zs[j]) => Off_Model(maximum([ao_dict[Zs[i]]["maxdeg"],ao_dict[Zs[j]]["maxdeg"]]), maximum([ao_dict[Zs[i]]["ord"],ao_dict[Zs[j]]["ord"]])+1, maximum([ao_dict[Zs[i]]["rcut"], ao_dict[Zs[j]]["rcut"]]), maximum([ao_dict[Zs[i]]["zcut"], ao_dict[Zs[j]]["zcut"]]), Zs[i], Zs[j], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, length(ao_dict[Zs[j]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"], ao_dict[Zs[j]]["n_orbs"]))
         end
     end
     return Density_Model(dict)
@@ -104,8 +103,7 @@ function eval_model(model::Density_Model, R::Union{State{T}, Vector{State{T}}}, 
             pos_J = findall(x->x==J, atom_ids)
             if I == J
                 md = model.Models[R[I].Z]
-                D[pos_I,pos_J] = sub_densitymatrix(md.model(get_state(R,I,I), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...)
-                D[pos_J,pos_I] = (D[pos_J,pos_I] + D[pos_I,pos_J]') / 2
+                D[pos_I,pos_J] = sub_densitymatrix(md.model(get_state(R,I,I), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...; sym = true)
             else
                 if R[I].Z > R[J].Z
                     md = model.Models[(R[J].Z,R[I].Z)]

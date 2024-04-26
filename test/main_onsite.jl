@@ -45,7 +45,7 @@ end
 Rs = identity.(Rs)
 Ys = identity.(Ys)
 
-onsite_model = fit!(onsite_model, Rs, Ys; solver = ACEfit.QR())
+onsite_model = fit!(onsite_model, Rs, Ys; solver = ACEfit.LSQR())
 
 onsite_model.fitted
 onsite_model.ps.dot.layer_1.W
