@@ -60,8 +60,8 @@ for L1 in 0:Lmax
         W2 = wigner_D(L2,Sign * Q) 
         W_new = T * W * T' # Wigner_D matrix in the real SHs context
         W2_new = T2 * W2 * T2'
-        for i = 1:n_orbs[L1+1]
-            for j = 1:n_orbs[L2+1]
+        for i = 1:n_orb[L1+1]
+            for j = 1:n_orb[L2+1]
                 @show isapprox(D_CC[L2pos(L1,i),L2pos(L2,j)],Sign^(L1+L2)*W_new'*D_CC2[L2pos(L1,i),L2pos(L2,j)]*W2_new,atol=1e-5)
             end
         end

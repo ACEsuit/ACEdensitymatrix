@@ -192,14 +192,14 @@ Off_Model(maxdeg::Int64, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T,
                 Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maxdeg, rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
 
 # adhoc code transforming an output of on or off model to a sub density matrix
-function sub_densitymatrix(x::NTuple{Len,Vector{Matrix{T}}},L1::Int64,L2::Int64,n_orbs1::Union{Vector{Int64},SVector{L3,Int64}},n_orbs2::Union{Vector{Int64},SVector{L4,Int64}};sym = false) where {Len, L3, L4, T}
+function sub_densitymatrix(x::NTuple{Len,Vector},L1::Int64,L2::Int64,n_orbs1::Union{Vector{Int64},SVector{L3,Int64}},n_orbs2::Union{Vector{Int64},SVector{L4,Int64}};sym = false) where {Len, L3, L4}
     @assert Len == (L1+1)*(L2+1) && L3 == L1 + 1 && L4 == L2 + 1
     LLset = [(l1,l2) for l1 = 0:L1 for l2 = 0:L2]
 
     # @assert unique(LLset) == LLset
     len1 = sum( (2i-1) * n_orbs1[i] for i = 1:length(n_orbs1) )
     len2 = sum( (2i-1) * n_orbs2[i] for i = 1:length(n_orbs2) )
-    D = zeros(T,len1,len2)
+    D = zeros(Float64,len1,len2)
     for (t,(l1,l2)) in enumerate(LLset)
         pos_init_x = l1 == 0 ? 1 : sum( (2i+1) * n_orbs1[i+1] for i = 0:l1-1 ) + 1
         pos_init_y = l2 == 0 ? 1 : sum( (2i+1) * n_orbs2[i+1] for i = 0:l2-1 ) + 1

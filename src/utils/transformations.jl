@@ -6,7 +6,7 @@ import EquivariantModels: coco_dot
 
 # The transformation matrix from complex SHs to real SHs
 function ctran(L)
-    AA = zeros(ComplexF64, 2L+1, 2L+1)
+    AA = spzeros(ComplexF64,2L+1, 2L+1)
     for i = 1:2L+1
         for j in [i, 2L+2-i]
             # @show i,j
