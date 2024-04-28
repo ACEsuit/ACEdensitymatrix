@@ -72,6 +72,14 @@ function _linear_operator(len_out, C, pos, len)
    return LinearOperator{T}(size(C,1), len, false, false, fL, nothing, nothing; S = Vector{T})
 end
 
+function _linear_operator_loc(L1, L2, C, pos, len)
+    T = SMatrix{2L1+1,2L2+1,ComplexF64} 
+    fL = let C=C, idx=pos#, T=T
+        (res, aa) -> genmul!(res, C, aa[idx], *)
+    end
+    return LinearOperator{T}(size(C,1), len, false, false, fL, nothing, nothing; S = Vector{T})
+ end
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ## The above transformation somewhat does not work - add ad hoc code to construct equivariant tensors
 

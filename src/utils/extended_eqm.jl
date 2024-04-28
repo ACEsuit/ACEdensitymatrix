@@ -6,14 +6,6 @@ import EquivariantModels: _rpi_A2B_matrix, _valtype, rpe_basis, RPE_filter
 _valtype(op::AbstractMatrix{<: AbstractMatrix}, x::AbstractArray{<: Number}) = SMatrix{size(op[1],1), size(op[1],2), promote_type(eltype(op[1]), eltype(x[1][1]))}
 _valtype(op::AbstractMatrix{<: AbstractMatrix}, x::AbstractArray{<: AbstractMatrix}) = SMatrix{size(op[1],1), size(op[1],2), promote_type(eltype(op[1]), eltype(x[1][1]))}
 
-function _linear_operator_loc(L1, L2, C, pos, len)
-    T = SMatrix{2L1+1,2L2+1,ComplexF64} 
-    fL = let C=C, idx=pos#, T=T
-        (res, aa) -> genmul!(res, C, aa[idx], *)
-    end
-    return LinearOperator{T}(size(C,1), len, false, false, fL, nothing, nothing; S = Vector{T})
- end
-
 function rpe_basis(A::Rot3DCoeffs_loc{L1,L2,T}, nn::SVector{N, TN}, ll::SVector{N, Int}) where {L1, L2, T, N, TN}
     Ure, Mre = re_basis(A, ll)
     G = _gramian(nn, ll, Ure, Mre)
@@ -274,8 +266,12 @@ function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::In
        pos[l] = findall(x -> filter(x) == 1, spec_nlm) # [ dict[tmp[j]] for j = 1:length(tmp)]
    end
 
-   l_sym = Lux.Parallel(nothing, [ConstLinearLayer(_linear_operator_loc(l1,l2,identity(C[i]),identity(pos[i]),length(spec_nlm))) for (i,(l1,l2)) in enumerate(LLset)]... )
+   # l_sym = Lux.Parallel(nothing, [ConstLinearLayer(_linear_operator_loc(l1,l2,identity(C[i]),identity(pos[i]),length(spec_nlm))) for (i,(l1,l2)) in enumerate(LLset)]... )
+   # A temporary fix for the issue of the cost of the linear operator (a lack of suitable ConstLinearLayer)
+   l_sep = Lux.Parallel(nothing, [WrappedFunction(x -> x[identity(pos[i])]) for i in 1:length(LLset)]... )
+   l_sym = Lux.Parallel(nothing, [ConstLinearLayer(identity(C[i])) for i in 1:length(LLset)]... )
    # C - A2Bmap
+   luxchain = append_layer(luxchain, l_sep; l_name = :Auxiliary_seperation_layer)
    luxchain = append_layer(luxchain, l_sym; l_name = :AA2BB)
 
    # if isreal

@@ -31,7 +31,7 @@ function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{Sta
         # construct A
         A = zeros((2l1+1)*(2l2+1)*length(Rs), size(C,2))
         
-        partial_md = Chain([model.model.layers[i] for i = 1:5]...)
+        partial_md = Chain([model.model.layers[i] for i = 1:6]...)
         ps, st = Lux.setup(MersenneTwister(1234), partial_md)
         for (j, R) in enumerate(Rs)
             A[(2l1+1)*(2l2+1)*(j-1)+1:(2l1+1)*(2l2+1)*j,:] = flat(partial_md(R,ps,st)[1][i])
