@@ -1,5 +1,6 @@
 using EquivariantModels: _get_cat_default,RPE_filter_long, closure, _linear_operator_L, _close, rpe_basis, _nlms2b, _gramian, LinearSearch, ConstLinearLayer, genmul!
 using Polynomials4ML: LinearLayer
+using Lux: AbstractExplicitLayer
 import EquivariantModels: _rpi_A2B_matrix, _valtype, rpe_basis, RPE_filter
 
 ## Construct a new EQM that generates also tensorial basis
@@ -203,40 +204,13 @@ function _rpi_A2B_matrix_real(cgen::Rot3DCoeffs_loc{L1,L2,T}, spec) where {L1,L2
     return sparse(Irow, Jcol, SMatrix{2L1+1,2L2+1}.(Ref(ctran(L1)) .* vals .* Ref(ctran(L2)')), idxB, length(spec))
 end
 
-# function degord2spec_loc(radial::Radial_basis; totaldegree, order, Lmax, catagories = [], filtered_extension = simple_extension, wL = 1, islong = true, rSH = false, admissible = default_admissible)
-#    # Rn = radial.radial_basis(totaldegree)
-#    Ylm = CYlmBasis(totaldegree)
+struct ConstLinearLayer_loc{T} <: AbstractExplicitLayer
+   op::T
+   pos::Vector{Int}
+end
 
-#    spec1p = make_nlms_spec(radial, Ylm; totaldegree = totaldegree, admissible = (br, by) -> br.n + wL * by.l <= totaldegree)
-#    spec1p = sort(spec1p, by = (x -> x.n + x.l * wL))
-#    spec1pidx = getspec1idx(spec1p, radial.Radialspec, Ylm)
-
-#    # define sparse for n-correlations
-#    tup2b = vv -> [ spec1p[v] for v in vv[vv .> 0]  ]
-#    default_admissible = bb -> length(bb) == 0 || sum(b.n for b in bb) + wL * sum(b.l for b in bb) <= totaldegree
-
-#    # to construct SS, SD blocks
-#    if rSH
-#       filter_ = RPE_filter_real(Lmax)
-#    else
-#       filter_ = islong ? RPE_filter_long(Lmax) : RPE_filter(Lmax)
-#    end
-
-#    specAA = gensparse(; NU = order, tup2b = tup2b, filter = filter_, 
-#                         admissible = default_admissible,
-#                         minvv = fill(0, order), 
-#                         maxvv = fill(length(spec1p), order), 
-#                         ordered = true)
-
-#    spec = [ vv[vv .> 0] for vv in specAA if !(isempty(vv[vv .> 0]))]
-#    # map back to nlm
-#    AAspec = getspecnlm(spec1p, spec)
-#    if !isempty(catagories)
-#       AAspec = filtered_extension(AAspec, catagories)
-#    end
-#    Aspec = specnlm2spec1p(AAspec)[1]
-#    return Aspec, AAspec # Aspecgetspecnlm(spec1p, spec)
-# end
+(l::ConstLinearLayer_loc)(x::AbstractArray, ps, st) = (l(x), st)
+(l::ConstLinearLayer_loc)(x) = l.op * x[l.pos]
 
 # Can add a reduce = true/false option to simplify onsite basis
 function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::Int64; categories=[], _get_cat = _get_cat_default, d=3, group="O3", isState = true, isreal = true)
@@ -268,10 +242,8 @@ function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::In
 
    # l_sym = Lux.Parallel(nothing, [ConstLinearLayer(_linear_operator_loc(l1,l2,identity(C[i]),identity(pos[i]),length(spec_nlm))) for (i,(l1,l2)) in enumerate(LLset)]... )
    # A temporary fix for the issue of the cost of the linear operator (a lack of suitable ConstLinearLayer)
-   l_sep = Lux.Parallel(nothing, [WrappedFunction(x -> x[identity(pos[i])]) for i in 1:length(LLset)]... )
-   l_sym = Lux.Parallel(nothing, [ConstLinearLayer(identity(C[i])) for i in 1:length(LLset)]... )
-   # C - A2Bmap
-   luxchain = append_layer(luxchain, l_sep; l_name = :Auxiliary_seperation_layer)
+   l_sym = Lux.Parallel(nothing, [ConstLinearLayer_loc(identity(C[i]),identity(pos[i])) for i in 1:length(LLset)]... )
+   # # C - A2Bmap
    luxchain = append_layer(luxchain, l_sym; l_name = :AA2BB)
 
    # if isreal
