@@ -4,6 +4,7 @@ using Polynomials4ML: ScalarPoly4MLBasis, lux, natural_indices
 
 include("utils/transformations.jl")
 include("utils/extended_eqm.jl")
+include("radial_basis.jl")
 
 # Should be removed after the next release of EquivariantModels
 import EquivariantModels: specnlm2spec1p
@@ -16,22 +17,6 @@ function specnlm2spec1p(spec_nlm)
     lmax = [ spec1p[i].l for i = 1:length(spec1p) ] |> maximum
     nmax = [ spec1p[i].n for i = 1:length(spec1p) ] |> maximum
     return spec1p, lmax, nmax + 1
-end
-
-# TODO: Another patch to EquivariantModels.simple_radial_basis - cutoff is done for something before transformation
-import EquivariantModels: simple_radial_basis
-function simple_radial_basis(basis::ScalarPoly4MLBasis,f_cut::Function=r->1,f_trans::Function=r->r; spec = nothing, isState = false)
-    if isnothing(spec)
-        try 
-           spec = natural_indices(basis)
-        catch 
-           error("The specification of this Radial_basis should be given explicitly!")
-        end
-     end
-  
-     _norm(x) = isState ? norm(x.rr) : norm(x)
-     return Radial_basis(Chain(split = Lux.Parallel(nothing; trans = WrappedFunction(x -> f_trans.(_norm.(x))), id = WrappedFunction(identity)), evaluation = Lux.Parallel(nothing; poly = lux(basis), cutoff = WrappedFunction(x -> f_cut.(_norm.(x)))), env = WrappedFunction(x -> x[1].*x[2]), ), spec)
-     # return Radial_basis(Chain(trans = WrappedFunction(x -> f_trans.(_norm.(x))), evaluation = Lux.BranchLayer(poly = lux(basis), cutoff = WrappedFunction(x -> f_cut.(x))), env = WrappedFunction(x -> x[1].*x[2]), ), spec)
 end
 
 abstract type AbstractModel end
@@ -122,61 +107,10 @@ function eval_model(model::Density_Model, R::Union{State{T}, Vector{State{T}}}, 
     
 end
 
-# Standard cutoff function
-fcut(rcut::Float64,pin::Int=2,pout::Int=2) = r -> (r < rcut ? abs( (r/rcut)^pin - 1)^pout : 0)
-
-# radial basis for Onsite
-function onsite_radial(maxdeg::Int64,rcut::Float64; pin::Int=2, pout::Int=2, r0::Float64=2.0, p::Int=2)
-    # fcut(rcut::Float64,pin::Int=pin,pout::Int=pout) = r -> (r < rcut ? abs( (r/rcut)^pin - 1)^pout : 0)
-    ftrans(r0::Float64=r0,p::Int=p) = r -> ( (1+r0)/(1+r) )^p
-    return EquivariantModels.simple_radial_basis(legendre_basis(maxdeg),fcut(rcut),ftrans())
-end
-
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
 On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1)) where{T} = 
                 On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]))..., SVector{Lmax+1}(n_orbs),false)
 
-
-# radial basis for Offsite
-function f_env_offsite(r,rbond,be::Bool,rcut::Float64,zcut::Float64,pin::Int=2,pout::Int=2)
-    lbond = norm(rbond) # length of bond
-    z = dot(r,rbond)/lbond
-    rr = norm(r - z*rbond)
-    z = abs(z)# - lbond/2)
-    if be == true
-        return fcut(rcut,pin,pout)(norm(r))
-    else be == false
-        return fcut(rcut,pin,pout)(rr) * fcut(zcut+lbond/2,pin,pout)(z)
-    end
-end
-
-# new radial basis for Offsite - two seperated spheries with the same cutoff (should be different though)
-function f_env_offsite_new(r,rbond,be::Bool,rcut::Float64,zcut::Float64,pin::Int=2,pout::Int=2)
-    # lbond = norm(rbond) # length of bond
-    rrI = norm(r + rbond)
-    rrJ = norm(r - rbond)
-    if be == true
-        return fcut(rcut,pin,pout)(norm(r))
-    else be == false
-        return fcut(rcut,pin,pout)(rrI) * fcut(rcut,pin,pout)(rrJ)
-    end
-end
-
-# function offsite_radial_basis(basis::ScalarPoly4MLBasis,f_cut::Function=r->1,f_trans::Function=r->r; spec = nothing)
-function offsite_radial_basis(maxdeg::Int64, rcut::Float64=5.0, zcut::Float64=5.0; r0::Float64=2.0, p::Int=2)
-    basis = legendre_basis(maxdeg)
-    spec = natural_indices(basis)
-    # if isnothing(spec)
-    #    try 
-    #       spec = natural_indices(basis)
-    #    catch 
-    #       error("The specification of this Radial_basis should be given explicitly!")
-    #    end
-    # end
-    ftrans = r -> ( (1+r0)/(1+r) )^p
-    _norm(x) = norm(x.rr)
-    return Radial_basis(Chain(split = Lux.Parallel(nothing; trans = WrappedFunction(x -> ftrans.(_norm.(x))), id = WrappedFunction(identity)), evaluation = Lux.Parallel(nothing; poly = lux(basis), cutoff = WrappedFunction(x -> [ f_env_offsite_new(x[i].rr,x[i].rr0,x[i].bond,rcut,zcut) for i = 1:length(x)])), env = WrappedFunction(x -> x[1].*x[2]), ), spec)
- end
 
 # get the categories of a offsite state
  _get_cat_offsite(x) = [ (x[i].Zi,x[i].Zj,x[i].Zk,x[i].bond) for i = 1:length(x) ]
