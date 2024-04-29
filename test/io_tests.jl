@@ -42,3 +42,14 @@ eval_model(onmd, R11) == eval_model(onsite_model, R11)
 d = write_dict(offsite_model)
 offmd = read_dict(d)
 eval_model(offmd, R15) == eval_model(offsite_model, R15)
+
+
+# construct a whole model DM and use its submodel to test the above 
+# use the below code to test the whole model
+
+# d = write_dict(DM)
+# dm = read_dict(d)
+# @time eval_model(dm, R, translate_frame(frame)["ao_labels"]);
+# @time eval_model(DM, R, translate_frame(frame)["ao_labels"]);
+
+# eval_model(dm, R, translate_frame(frame)["ao_labels"]) == eval_model(DM, R, translate_frame(frame)["ao_labels"])

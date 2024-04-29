@@ -140,3 +140,6 @@ function read_dict(::Val{:Off_Model}, dict::Dict)
     return Off_Model(luxchain, ps, st, n_orbs1, n_orbs2, dict["fitted"])
 
 end
+
+write_dict(m::Density_Model{T}) where T = Dict("__id__"=>"Density_Model", "Models" => Dict([ (key => write_dict(m.Models[key])) for key in keys(m.Models)]))
+read_dict(::Val{:Density_Model}, dict::Dict) = Density_Model(Dict([ (key => read_dict(dict["Models"][key]) ) for key in setdiff(keys(dict["Models"]),["__id__"])]))
