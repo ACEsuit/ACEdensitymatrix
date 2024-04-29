@@ -142,7 +142,7 @@ function f_env_offsite(r,rbond,be::Bool,rcut::Float64,zcut::Float64,pin::Int=2,p
     lbond = norm(rbond) # length of bond
     z = dot(r,rbond)/lbond
     rr = norm(r - z*rbond)
-    z = abs(z - lbond/2)
+    z = abs(z)# - lbond/2)
     if be == true
         return fcut(rcut,pin,pout)(norm(r))
     else be == false
@@ -175,7 +175,7 @@ function offsite_radial_basis(maxdeg::Int64, rcut::Float64=5.0, zcut::Float64=5.
     # end
     ftrans = r -> ( (1+r0)/(1+r) )^p
     _norm(x) = norm(x.rr)
-    return Radial_basis(Chain(split = Lux.Parallel(nothing; trans = WrappedFunction(x -> ftrans.(_norm.(x))), id = WrappedFunction(identity)), evaluation = Lux.Parallel(nothing; poly = lux(basis), cutoff = WrappedFunction(x -> [ f_env_offsite(x[i].rr,x[i].rr0,x[i].bond,rcut,zcut) for i = 1:length(x)])), env = WrappedFunction(x -> x[1].*x[2]), ), spec)
+    return Radial_basis(Chain(split = Lux.Parallel(nothing; trans = WrappedFunction(x -> ftrans.(_norm.(x))), id = WrappedFunction(identity)), evaluation = Lux.Parallel(nothing; poly = lux(basis), cutoff = WrappedFunction(x -> [ f_env_offsite_new(x[i].rr,x[i].rr0,x[i].bond,rcut,zcut) for i = 1:length(x)])), env = WrappedFunction(x -> x[1].*x[2]), ), spec)
  end
 
 # get the categories of a offsite state

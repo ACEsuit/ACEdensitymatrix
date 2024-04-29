@@ -21,7 +21,7 @@ function translate_frame(frame::Dict{String,Array})
     return Dict("R"=>R, "D"=>D, "ao_labels"=>frame["Basis set labels"], "atomic_numbers"=>Zs)
 end
 
-function get_state(R,I,J;α=1)
+function get_state(R,I,J;α=.5)
     if I == J
         # Onsite local environment
         @assert I <= length(R)
