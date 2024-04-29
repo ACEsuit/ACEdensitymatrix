@@ -7,11 +7,6 @@ read_dict(::Val{:Sample_Onsite_Radial}, dict::Dict) = Sample_Onsite_Radial(dict[
 write_dict(l::Sample_Offsite_Radial) = Dict("__id__"=>"Sample_Offsite_Radial", "maxdeg" => l.maxdeg, "rcut" => l.rcut, "zcut" => l.zcut, "pin" => l.pin, "pout" => l.pout, "r0" => l.r0, "p" => l.p, "polynomial_type" => l.polynomial_type)
 read_dict(::Val{:Sample_Offsite_Radial}, dict::Dict) = Sample_Offsite_Radial(dict["maxdeg"], dict["rcut"], dict["zcut"], dict["pin"], dict["pout"], dict["r0"], dict["p"], dict["polynomial_type"])
 
-md = offsite_model.model
-l = md.layers.embed.layers.Rn
-radial = offsite_radial_basis(l.maxdeg, l.rcut, l.zcut; l.pin, l.pout, l.r0, l.p, l.polynomial_type)
-read_dict(write_dict(radial.Rnl)) == radial.Rnl
-
 write_dict(m::On_Model{L}) where L = Dict("__id__"=>"On_Model", 
                 "maxdeg" => m.model.layers.A.basis.spec[end][1],
                 "ord" => m.model.layers.AA.basis.specs |> length,
@@ -145,11 +140,3 @@ function read_dict(::Val{:Off_Model}, dict::Dict)
     return Off_Model(luxchain, ps, st, n_orbs1, n_orbs2, dict["fitted"])
 
 end
-
-d = write_dict(onsite_model)
-onmd = read_dict(d)
-eval_model(onmd, R11) == eval_model(onsite_model, R11)
-
-d = write_dict(offsite_model)
-offmd = read_dict(d)
-eval_model(offmd, R15) == eval_model(offsite_model, R15)
