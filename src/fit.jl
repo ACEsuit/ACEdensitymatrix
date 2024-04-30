@@ -78,7 +78,7 @@ function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union
     for frame in frames
         f = translate_frame(frame)
         for key in keys
-            if typeof(key) == T
+            if !(typeof(key) <: Tuple)
                 for i in findall(x->x==key, f["atomic_numbers"])
                     push!(Rs[key], get_state(f["R"], i, i))
                     push!(Ys[key], get_block(f["D"], i, i, f["ao_labels"]))

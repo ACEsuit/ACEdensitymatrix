@@ -27,7 +27,7 @@ end
 frames_test = identity.(frames_test)
 
 # construct Models
-degreeset = [i for i = 2:6]
+degreeset = [i for i = 2:10]
 RE_train = zeros(length(degreeset))
 RMSE_train = zeros(length(degreeset))
 MV_train = zeros(length(degreeset))
@@ -37,25 +37,30 @@ MV_test = zeros(length(degreeset))
 
 for (i, degree) in enumerate(degreeset)
 
-    # if model exists
-    #     read model from file
-    # else
+    println("Constructing/Loading the order $order degree $degree model ...")
+    println()
+
+    try 
+        DM = load("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld")|> read_dict
+        
+        println("Model loaded!")
+        println()
+    catch
         ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut), 
                         6 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
                         7 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
                         8 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut) )
-    
-        println("Constructing the order $order degree $degree model ...")
-        println()
-
+        
         DM = Density_Model(ao_dict::Dict) # a density matrix model corresponding to the atomic orbital dictionary
 
         println("Model constructed!")
         println()
-    # end
+    end
 
-    # fit the model
-    fit!(DM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I))
+    # fit the model, if it is not fully fitted yet
+    if !isfitted(DM)
+        fit!(DM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I))
+    end
 
     # validate the model - Training
     for frame in frames
