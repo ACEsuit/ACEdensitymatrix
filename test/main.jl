@@ -5,14 +5,14 @@ include("../src/model_construction.jl")
 include("../src/fit.jl")
 include("../src/io.jl")
 
-Ndata = 1
+Ndata = 200
 rcut = 10.0
 zcut = 10.0
-degree = 6
+degree = 4
 order = 2
 
 # read data 
-filenames = ["data/propanol.h5"]#, "data/esanol.h5", "data/acrolein.h5", "data/phenol.h5", "data/toluene.h5", "data/acetaldehyde.h5", "data/aniline.h5", "data/nmacetamide.h5"]
+filenames = ["data/propanol.h5", "data/esanol.h5", "data/acrolein.h5", "data/phenol.h5", "data/toluene.h5", "data/acetaldehyde.h5", "data/aniline.h5", "data/nmacetamide.h5"]
 frames = []
 for fname in filenames
     molecule = TrajectoryHDF5(fname)
@@ -42,7 +42,7 @@ println("Model constructed!")
 println()
 
 # fit the model
-fit!(DM, frames; solver = ACEfit.SKLEARN_BRR())
+fit!(DM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I))
 
 # validate the model - Training
 RE = 0
@@ -66,7 +66,7 @@ RMSE = 0
 MV = 0
 for frame in frames_test
     R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
-    D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix
+    @time D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix
     RMSE += norm(D_pred - D)^2/(size(D,1)*size(D,2))
     RE += norm(D_pred - D)/norm(D)
     MV += norm(D_pred * D_pred - D_pred)
@@ -86,7 +86,6 @@ println("Saving the model ...")
 println()
 
 save("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
-
 
 println("Model saved!")
 println()
