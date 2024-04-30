@@ -9,7 +9,7 @@ Ndata = 200
 rcut = 10.0
 zcut = 10.0
 degree = 4
-order = 2
+order = 3
 
 # read data 
 filenames = ["data/propanol.h5", "data/esanol.h5", "data/acrolein.h5", "data/phenol.h5", "data/toluene.h5", "data/acetaldehyde.h5", "data/aniline.h5", "data/nmacetamide.h5"]
@@ -66,7 +66,7 @@ RMSE = 0
 MV = 0
 for frame in frames_test
     R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
-    @time D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix
+    D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix
     RMSE += norm(D_pred - D)^2/(size(D,1)*size(D,2))
     RE += norm(D_pred - D)/norm(D)
     MV += norm(D_pred * D_pred - D_pred)
