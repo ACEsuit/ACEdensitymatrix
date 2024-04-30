@@ -55,10 +55,12 @@ eval_model(model::AbstractModel, x::Union{State{T}, Vector{State{T}}}) where {T}
 # including the three parameters that define the basis set (maxdeg, ord, cutoff)
 # Output: a Density Model that contains all the On_Models and Off_Models, storing as Dictionary
 # When evaluating a Density Model, the model should not only know a whole State, but also the ao_labels
-function Density_Model(ao_dict::Dict)
-    Zs = Int.(collect(keys(ao_dict))) |> sort # Here we assume that the atoms are symbolized by their atomic numbers which are integers
-    T = typeof(Zs[1])
-    dict = Dict{Union{T,Tuple{T,T}},AbstractModel}()
+
+function Density_Model(ao_dict::Dict{TP, Dict{String, Any}}) where TP # There is a potential risk that DM tries to convert an unknown type dictionary to a Density_Model
+    Zs = collect(keys(ao_dict)) |> sort # Here we assume that the atoms are symbolized by their atomic numbers which are integers
+    # T = typeof(Zs[1])
+    # @assert TP == T
+    dict = Dict{Union{TP,Tuple{TP,TP}},AbstractModel}()
     for i = 1:length(Zs)
         push!(dict, Zs[i] => On_Model(ao_dict[Zs[i]]["maxdeg"], ao_dict[Zs[i]]["ord"], ao_dict[Zs[i]]["rcut"], Zs[i], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"]))
         for j = i:length(Zs)
@@ -67,7 +69,7 @@ function Density_Model(ao_dict::Dict)
             push!(dict, (Zs[i],Zs[j]) => Off_Model(maximum([ao_dict[Zs[i]]["maxdeg"],ao_dict[Zs[j]]["maxdeg"]]), maximum([ao_dict[Zs[i]]["ord"],ao_dict[Zs[j]]["ord"]]), maximum([ao_dict[Zs[i]]["rcut"], ao_dict[Zs[j]]["rcut"]]), maximum([ao_dict[Zs[i]]["zcut"], ao_dict[Zs[j]]["zcut"]]), Zs[i], Zs[j], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, length(ao_dict[Zs[j]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"], ao_dict[Zs[j]]["n_orbs"]))
         end
     end
-    return Density_Model(dict)
+    return Density_Model{TP}(dict)
 end
 
 function eval_model(model::Density_Model, R::Union{State{T}, Vector{State{T}}}, ao_labels::Union{Vector{String},Matrix{String}}) where {T}
@@ -109,7 +111,7 @@ end
 
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
 On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1)) where{T} = 
-                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]))..., SVector{Lmax+1}(n_orbs),false)
+                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial_basis(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]))..., SVector{Lmax+1}(n_orbs),false)
 
 
 # get the categories of a offsite state
