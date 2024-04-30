@@ -65,7 +65,7 @@ println("Model constructed!")
 println()
 
 # fit the model
-fit!(DM, frames; solver = ACEfit.SKLEARN_BRR())
+fit!(DM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I))
 
 # validate the model - Training
 RE = 0
@@ -74,9 +74,9 @@ MV = 0
 for frame in frames
     R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
     D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix
-    RMSE += norm(D_pred - D)^2/(size(D,1)*size(D,2))
-    RE += norm(D_pred - D)/norm(D)
-    MV += norm(D_pred * D_pred - D_pred)
+    global RMSE += norm(D_pred - D)^2/(size(D,1)*size(D,2))
+    global RE += norm(D_pred - D)/norm(D)
+    global MV += norm(D_pred * D_pred - D_pred)
 end
 println("Training RMSE per matrix element = $(sqrt(RMSE/length(frames)))")
 println("Average training relative error in D: ||D - D_ref|| / ||D||= $(RE/length(frames))")
@@ -90,9 +90,9 @@ MV = 0
 for frame in frames_test
     R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
     D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix
-    RMSE += norm(D_pred - D)^2/(size(D,1)*size(D,2))
-    RE += norm(D_pred - D)/norm(D)
-    MV += norm(D_pred * D_pred - D_pred)
+    global RMSE += norm(D_pred - D)^2/(size(D,1)*size(D,2))
+    global RE += norm(D_pred - D)/norm(D)
+    global MV += norm(D_pred * D_pred - D_pred)
 end
 println("Test RMSE per matrix element = $(sqrt(RMSE/length(frames_test)))")
 println("Average test relative error in D: ||D - D_ref|| / ||D||= $(RE/length(frames_test))")
@@ -108,7 +108,7 @@ println()
 println("Saving the model ...")
 println()
 
-save("CHON_Models/model_maxdeg$(parsed_args["degree"])_ord$(parsed_args["order"])_rcut$(parsed_args["rcut"])_zcut$(parsed_args["zcut"]).jld",  DM)
+save("CHON_Models/model_maxdeg$(parsed_args["degree"])_ord$(parsed_args["order"])_rcut$(parsed_args["rcut"])_zcut$(parsed_args["zcut"]).jld",  write_dict(DM))
 
 println("Model saved!")
 println()
