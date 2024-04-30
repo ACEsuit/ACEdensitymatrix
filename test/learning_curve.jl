@@ -8,7 +8,7 @@ include("../src/io.jl")
 Ndata = 100
 rcut = 10.0
 zcut = 10.0
-order = 1
+order = 2
 
 # read data
 filenames = ["data/propanol.h5", "data/esanol.h5", "data/acrolein.h5", "data/phenol.h5", "data/toluene.h5", "data/acetaldehyde.h5", "data/aniline.h5", "data/nmacetamide.h5"]
@@ -41,7 +41,7 @@ for (i, degree) in enumerate(degreeset)
     println()
 
     try 
-        DM = load("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld")|> read_dict
+        global DM = load("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld")|> read_dict
         
         println("Model loaded!")
         println()
@@ -51,7 +51,7 @@ for (i, degree) in enumerate(degreeset)
                         7 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
                         8 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut) )
         
-        DM = Density_Model(ao_dict::Dict) # a density matrix model corresponding to the atomic orbital dictionary
+        global DM = Density_Model(ao_dict::Dict) # a density matrix model corresponding to the atomic orbital dictionary
 
         println("Model constructed!")
         println()
@@ -105,22 +105,25 @@ for (i, degree) in enumerate(degreeset)
     println()
 
     println("Done for order $order degree $degree model")
+    println()
 
 end
 
 # visualize the error
+using Plots
 plt = plot(degreeset, RMSE_train, label = "Training RMSE", xlabel = "Degree", ylabel = "RMSE")
 plot!(degreeset, RMSE_test, label = "Test RMSE")
-savefig("RMSE_Order$(order)_rcut$(rcut)_zcut$(zcut)")
+title!("Order $(order): RMSE vs Degree")
+savefig("test/CHON_Models/RMSE_Order$(order)_rcut$(rcut)_zcut$(zcut).png")
 
 plt = plot(degreeset, RE_train, label = "Training Relative Error", xlabel = "Degree", ylabel = "RE")
 plot!(degreeset, RE_test, label = "Test Relative Error")
-savefig("RE_Order$(order)_rcut$(rcut)_zcut$(zcut)")
+title!("Order $(order): Relative Error on D vs Degree")
+savefig("test/CHON_Models/RE_Order$(order)_rcut$(rcut)_zcut$(zcut).png")
 
 plt = plot(degreeset, MV_train, label = "Training Manifold Violation", xlabel = "Degree", ylabel = "MV")
 plot!(degreeset, MV_test, label = "Test Manifold Violation")
-savefig("MV_Order$(order)_rcut$(rcut)_zcut$(zcut)")
-
-MV_train
+title!("Order $(order): Manifold Violation vs Degree")
+savefig("test/CHON_Models/MV_Order$(order)_rcut$(rcut)_zcut$(zcut).png")
 
 # converging meaning that we need to go to higher correlation order
