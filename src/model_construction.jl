@@ -56,19 +56,70 @@ eval_model(model::AbstractModel, x::Union{State{T}, Vector{State{T}}}) where {T}
 # Output: a Density Model that contains all the On_Models and Off_Models, storing as Dictionary
 # When evaluating a Density Model, the model should not only know a whole State, but also the ao_labels
 
+function classify_ao_dict_on(ao_dict::Dict{TP, Dict{String, Any}}) where TP
+    Zs = collect(keys(ao_dict)) |> sort
+    on_classes = Vector{Vector{TP}}()
+    for Z in Zs
+        pushed = false
+        for C in on_classes
+            if ao_dict[Z]["n_orbs"] == ao_dict[C[1]]["n_orbs"] # It is too strict, actually the cutoffs do not matter
+                push!(C, Z)
+                pushed = true
+                break
+            end
+        end
+        if !pushed
+            push!(on_classes, [Z])
+        end
+    end
+    return on_classes
+end
+
+function classify_ao_dict_off(ao_dict::Dict{TP, Dict{String, Any}}) where TP
+    on_classes = classify_ao_dict_on(ao_dict)
+    off_classes = Vector{Vector{Tuple{TP,TP}}}()
+    for (k,Zs1) in enumerate(on_classes)
+        for Zs2 in on_classes[k:end]
+            push!(off_classes, [ Z1≤Z2 ? (Z1,Z2) : (Z2, Z1) for Z1 in Zs1 for Z2 in Zs2])
+        end
+    end
+    return unique.(off_classes)
+end
+
 function Density_Model(ao_dict::Dict{TP, Dict{String, Any}}) where TP # There is a potential risk that DM tries to convert an unknown type dictionary to a Density_Model
-    Zs = collect(keys(ao_dict)) |> sort # Here we assume that the atoms are symbolized by their atomic numbers which are integers
+    Zs = collect(keys(ao_dict)) |> sort 
+    on_classes = classify_ao_dict_on(ao_dict)
+    off_classes = classify_ao_dict_off(ao_dict)
+    # Here we assume that the atoms are symbolized by their atomic numbers which are integers
+    
     # T = typeof(Zs[1])
     # @assert TP == T
     dict = Dict{Union{TP,Tuple{TP,TP}},AbstractModel}()
-    for i = 1:length(Zs)
-        push!(dict, Zs[i] => On_Model(ao_dict[Zs[i]]["maxdeg"], ao_dict[Zs[i]]["ord"], ao_dict[Zs[i]]["rcut"], Zs[i], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"]))
-        for j = i:length(Zs)
-            # cutoff here is not so correct but let's keep it for now
-            # same for the degree and order - how to determine them for offsite - change the input?
-            push!(dict, (Zs[i],Zs[j]) => Off_Model(maximum([ao_dict[Zs[i]]["maxdeg"],ao_dict[Zs[j]]["maxdeg"]]), maximum([ao_dict[Zs[i]]["ord"],ao_dict[Zs[j]]["ord"]]), maximum([ao_dict[Zs[i]]["rcut"], ao_dict[Zs[j]]["rcut"]]), maximum([ao_dict[Zs[i]]["zcut"], ao_dict[Zs[j]]["zcut"]]), Zs[i], Zs[j], Zs, length(ao_dict[Zs[i]]["n_orbs"])-1, length(ao_dict[Zs[j]]["n_orbs"])-1, ao_dict[Zs[i]]["n_orbs"], ao_dict[Zs[j]]["n_orbs"]))
+    
+    for zs in on_classes
+        push!(dict, zs[1] => On_Model(ao_dict[zs[1]]["maxdeg"], ao_dict[zs[1]]["ord"], ao_dict[zs[1]]["rcut"], zs[1], Zs, length(ao_dict[zs[1]]["n_orbs"])-1, ao_dict[zs[1]]["n_orbs"]))
+        
+        if length(zs) > 1
+            AA2BB = Dict("AA2BBmap" => [ dict[zs[1]].model.layers.AA2BB.layers[i].op for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)],
+                         "AA2BBpos" => [ dict[zs[1]].model.layers.AA2BB.layers[i].pos for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)])
+            for k = 2:length(zs)
+                push!(dict, zs[k] => On_Model(ao_dict[zs[k]]["maxdeg"], ao_dict[zs[k]]["ord"], ao_dict[zs[k]]["rcut"], zs[k], Zs, length(ao_dict[zs[k]]["n_orbs"])-1, ao_dict[zs[k]]["n_orbs"], AA2BB = AA2BB))
+            end
         end
     end
+
+    for zs in off_classes
+        push!(dict, zs[1] => Off_Model(maximum([ao_dict[zs[1][1]]["maxdeg"],ao_dict[zs[1][2]]["maxdeg"]]), maximum([ao_dict[zs[1][1]]["ord"],ao_dict[zs[1][2]]["ord"]]), maximum([ao_dict[zs[1][1]]["rcut"], ao_dict[zs[1][2]]["rcut"]]), maximum([ao_dict[zs[1][1]]["zcut"], ao_dict[zs[1][2]]["zcut"]]), zs[1][1], zs[1][2], Zs, length(ao_dict[zs[1][1]]["n_orbs"])-1, length(ao_dict[zs[1][2]]["n_orbs"])-1, ao_dict[zs[1][1]]["n_orbs"], ao_dict[zs[1][2]]["n_orbs"]))
+
+        if length(zs) > 1
+            AA2BB = Dict("AA2BBmap" => [ dict[zs[1]].model.layers.AA2BB.layers[i].op for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)],
+                         "AA2BBpos" => [ dict[zs[1]].model.layers.AA2BB.layers[i].pos for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)])
+            for k = 2:length(zs)
+                push!(dict, zs[k] => Off_Model(maximum([ao_dict[zs[k][1]]["maxdeg"],ao_dict[zs[k][2]]["maxdeg"]]), maximum([ao_dict[zs[k][1]]["ord"],ao_dict[zs[k][2]]["ord"]]), maximum([ao_dict[zs[k][1]]["rcut"], ao_dict[zs[k][2]]["rcut"]]), maximum([ao_dict[zs[k][1]]["zcut"], ao_dict[zs[k][2]]["zcut"]]), zs[k][1], zs[k][2], Zs, length(ao_dict[zs[k][1]]["n_orbs"])-1, length(ao_dict[zs[k][2]]["n_orbs"])-1, ao_dict[zs[k][1]]["n_orbs"], ao_dict[zs[k][2]]["n_orbs"], AA2BB = AA2BB) )
+            end
+        end
+    end
+
     return Density_Model{TP}(dict)
 end
 
@@ -110,8 +161,8 @@ function eval_model(model::Density_Model, R::Union{State{T}, Vector{State{T}}}, 
 end
 
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
-On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1)) where{T} = 
-                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial_basis(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]))..., SVector{Lmax+1}(n_orbs),false)
+On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); AA2BB=nothing) where{T} = 
+                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial_basis(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]), AA2BB = AA2BB)..., SVector{Lmax+1}(n_orbs),false)
 
 
 # get the categories of a offsite state
@@ -124,8 +175,8 @@ On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::I
  end
 
 # An offsite submodel - input is a (local) two-center environment, output is the corresponding offsite block of the density matrix
-Off_Model(maxdeg::Int64, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1)) where {T} = 
-                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maxdeg, rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
+Off_Model(maxdeg::Int64, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing) where {T} = 
+                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maxdeg, rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
 
 # adhoc code transforming an output of on or off model to a sub density matrix
 function sub_densitymatrix(x::NTuple{Len,Vector},L1::Int64,L2::Int64,n_orbs1::Union{Vector{Int64},SVector{L3,Int64}},n_orbs2::Union{Vector{Int64},SVector{L4,Int64}};sym = false) where {Len, L3, L4}

@@ -30,40 +30,12 @@ function read_dict(::Val{:On_Model}, dict::Dict)
     n_orbs = identity.(dict["n_orbs"])
     categories = identity.(dict["categories"])
 
-    # recover xx2AA map
-    spec_nlm = degord2spec(radial; totaldegree = dict["maxdeg"], order = dict["ord"], Lmax = 2L, catagories = categories, filtered_extension = simple_extension, islong = true)[2]
-    # first filt out those unfeasible spec_nlm
-    filter_init = RPE_filter_long(2L)
-    spec_nlm = spec_nlm[findall(x -> filter_init(x) == 1, spec_nlm)]
-   
-    # sort!(spec_nlm, by = x -> length(x))
-    spec_nlm = closure(spec_nlm,filter_init; categories = categories)
-    luxchain = EquivariantModels.xx2AA(spec_nlm, radial; categories = categories, _get_cat = _get_cat_default, d = 3, rSH = false, isState = true)[1]
-    
-    # recover AA2BB map
-    LLset = [(l1,l2) for l1 = 0:L for l2 = 0:L]
-    C = dict["AA2BBmap"]
-    pos = dict["AA2BBpos"]
-
-    l_sym = Lux.Parallel(nothing, [ConstLinearLayer_loc(identity.(C[i]),identity.(pos[i])) for i in 1:length(C)]... )
-    # C - A2Bmap
-    luxchain = append_layer(luxchain, l_sym; l_name = :AA2BB)
-
-    l_real = WrappedFunction(cc -> Tuple([identity.(real.(cc[i])) for i = 1:length(cc) ]))
-    luxchain = append_layer(luxchain, l_real; l_name = :stablize)
-
-    ext_n_orbs = extend_n_orbs(n_orbs, n_orbs, LLset)
-
-    len = [size(C[i],1) for i = 1:length(C)]
-    
-    # recover dot layer
-    Linear_layer = Lux.Parallel(nothing, [Polynomials4ML.LinearLayer(len[i], ext_n_orbs[i]) for i = 1:(L+1)^2]... )
-    luxchain = append_layer(luxchain, Linear_layer; l_name = :dot)
+    luxchain, ps, st = equivariant_operator(dict["maxdeg"], dict["ord"], radial, L, L, Vector(n_orbs), Vector(n_orbs); categories = categories, _get_cat = _get_cat_default, cat_extension = simple_extension, AA2BB = Dict("AA2BBmap" => dict["AA2BBmap"], "AA2BBpos" => dict["AA2BBpos"]))
 
     ps, st = Lux.setup(MersenneTwister(1234), luxchain)
 
     # replace the parameters
-    layer_set = ["layer_$i" for i in 1:length(C)]
+    layer_set = ["layer_$i" for i in 1:length(dict["AA2BBmap"])]
     layer_set = Symbol.(layer_set)
     
     for i = 1:length(layer_set)
@@ -99,40 +71,10 @@ function read_dict(::Val{:Off_Model}, dict::Dict)
     n_orbs1, n_orbs2 = dict["n_orbs1"], dict["n_orbs2"]
     categories = identity.(dict["categories"])
 
-    # recover xx2AA map
-    spec_nlm = degord2spec(radial; totaldegree = dict["maxdeg"], order = dict["ord"], Lmax = L1+L2, catagories = categories, filtered_extension = offsite_extension, islong = true)[2]
-    # first filt out those unfeasible spec_nlm
-    filter_init = RPE_filter_long(L1+L2)
-    spec_nlm = spec_nlm[findall(x -> filter_init(x) == 1, spec_nlm)]
-   
-    # sort!(spec_nlm, by = x -> length(x))
-    spec_nlm = closure(spec_nlm,filter_init; categories = categories)
-    luxchain = EquivariantModels.xx2AA(spec_nlm, radial; categories = categories, _get_cat = _get_cat_offsite, d = 3, rSH = false, isState = true)[1]
-    
-    # recover AA2BB map
-    LLset = [(l1,l2) for l1 = 0:L1 for l2 = 0:L2]
-    C = dict["AA2BBmap"]
-    pos = dict["AA2BBpos"]
-
-    l_sym = Lux.Parallel(nothing, [ConstLinearLayer_loc(identity.(C[i]),identity.(pos[i])) for i in 1:length(C)]... )
-    # C - A2Bmap
-    luxchain = append_layer(luxchain, l_sym; l_name = :AA2BB)
-
-    l_real = WrappedFunction(cc -> Tuple([identity.(real.(cc[i])) for i = 1:length(cc) ]))
-    luxchain = append_layer(luxchain, l_real; l_name = :stablize)
-
-    ext_n_orbs = extend_n_orbs(n_orbs1, n_orbs2, LLset)
-
-    len = [size(C[i],1) for i = 1:length(C)]
-    
-    # recover dot layer
-    Linear_layer = Lux.Parallel(nothing, [Polynomials4ML.LinearLayer(len[i], ext_n_orbs[i]) for i = 1:(L1+1)*(L2+1)]... )
-    luxchain = append_layer(luxchain, Linear_layer; l_name = :dot)
-
-    ps, st = Lux.setup(MersenneTwister(1234), luxchain)
+    luxchain, ps, st = equivariant_operator(dict["maxdeg"], dict["ord"], radial, L1, L2, Vector(n_orbs1), Vector(n_orbs2); categories = categories, _get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = Dict("AA2BBmap" => dict["AA2BBmap"], "AA2BBpos" => dict["AA2BBpos"]))
 
     # replace the parameters
-    layer_set = ["layer_$i" for i in 1:length(C)]
+    layer_set = ["layer_$i" for i in 1:length(dict["AA2BBmap"])]
     layer_set = Symbol.(layer_set)
     
     for i = 1:length(layer_set)
