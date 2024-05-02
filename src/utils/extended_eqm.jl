@@ -227,13 +227,9 @@ function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::In
 
    LLset = [(l1,l2) for l1 = 0:L1 for l2 = 0:L2]
    if isnothing(AA2BB)
-      print("Constructe AA2BB map")
-      println()
-      
       C = Vector{Any}(undef, length(LLset))
       pos = Vector{Any}(undef, length(LLset))
        
-   
       for (l,(l1,l2)) in enumerate(LLset)
          filter = RPE_filter(l1+l2)
          cgen = Rot3DCoeffs_loc(l1,l2) # TODO: this should be made group related
@@ -244,9 +240,6 @@ function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::In
          pos[l] = findall(x -> filter(x) == 1, spec_nlm) # [ dict[tmp[j]] for j = 1:length(tmp)]
       end
    else
-      print("Load AA2BB map")
-      println()
-
       C = AA2BB["AA2BBmap"]
       pos = AA2BB["AA2BBpos"]
    end
