@@ -2,17 +2,13 @@ This repo aims to fit self-consistent density matrices $D_R$ for given configura
 
 An example of its use can be found on `../test/main.jl`, which illustrates the ways of reading data, constructing models, fitting parameters, saving the fitted model and predicting the density matrix.
 
-A note before using it is that this repo relies on a developing version of `Polynomials4ML.jl`.
-
 One should run 
 
 ```julia
-]activate .
-
-add https://github.com/ACEsuit/Polynomials4ML.jl#generic_linear
+] registry add https://github.com/ACEsuit/ACEregistry.git
 ```
 
-when set up the Julia environment (this might no longer be needed?). 
+when set up the Julia environment. 
 
 This repo also uses a developing version of `ACELuxOperators.jl`, which is not yet released and hence some code in this repo is directly "hacked" from ACELuxOperators.jl, which is also written by the author. 
 
