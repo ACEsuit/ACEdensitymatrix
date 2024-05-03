@@ -95,7 +95,7 @@ function Density_Model(ao_dict::Dict{TP, Dict{String, Any}}) where TP # There is
     # T = typeof(Zs[1])
     # @assert TP == T
     dict = Dict{Union{TP,Tuple{TP,TP}},AbstractModel}()
-    
+
     for zs in on_classes
         push!(dict, zs[1] => On_Model(ao_dict[zs[1]]["maxdeg"], ao_dict[zs[1]]["ord"], ao_dict[zs[1]]["rcut"], zs[1], Zs, length(ao_dict[zs[1]]["n_orbs"])-1, ao_dict[zs[1]]["n_orbs"]))
         
@@ -158,6 +158,41 @@ function eval_model(model::Density_Model, R::Union{State{T}, Vector{State{T}}}, 
 
     return D
     
+end
+
+# reset_cutoff function is used to reset the cutoff of the model (it does not change the model itself but create a new one with new cutoffs)
+# after resetting the cutoff, we need to refit the model so isfitted model is always set to be false
+reset_cutoff(model::Density_Model, r_cut::Float64, z_cut::Float64) = Density_Model( Dict([ (key => reset_cutoff(model.Models[key], r_cut, z_cut)) for key in keys(model.Models)] ) )
+
+function reset_cutoff(model::On_Model, r_cut::Float64, z_cut::Float64)
+    degree = model.model.layers.embed.layers.Rn.maxdeg
+    r_cut_old = model.model.layers.embed.layers.Rn.rcut
+    if r_cut_old == r_cut
+        @warn("The cutoff is already set to $r_cut. No change is made.")
+        return model
+    end
+    Rn_new = onsite_radial_basis(degree, r_cut)
+    embed_new = Lux.Parallel(nothing; Rn = Rn_new.Rnl, Ylm = model.model.layers.embed.layers.Ylm, δs = model.model.layers.embed.layers.δs)
+    luxchain = Chain(embed = embed_new, A = model.model.layers.A, AA = model.model.layers.AA, AA2BB = model.model.layers.AA2BB, stablize = model.model.layers.stablize, dot = model.model.layers.dot)
+
+    ps, st = Lux.setup(MersenneTwister(1234), luxchain)
+    return On_Model(luxchain, ps, st, model.n_orbs, false)
+end
+
+function reset_cutoff(model::Off_Model, r_cut::Float64, z_cut::Float64)
+    degree = model.model.layers.embed.layers.Rn.maxdeg
+    r_cut_old = model.model.layers.embed.layers.Rn.rcut
+    z_cut_old = model.model.layers.embed.layers.Rn.zcut
+    if r_cut_old == r_cut && z_cut_old == z_cut
+        @warn("The cutoffs are already set as is. No change is made.")
+        return model
+    end
+    Rn_new = offsite_radial_basis(degree, r_cut, z_cut)
+    embed_new = Lux.Parallel(nothing; Rn = Rn_new.Rnl, Ylm = model.model.layers.embed.layers.Ylm, δs = model.model.layers.embed.layers.δs)
+    luxchain = Chain(embed = embed_new, A = model.model.layers.A, AA = model.model.layers.AA, AA2BB = model.model.layers.AA2BB, stablize = model.model.layers.stablize, dot = model.model.layers.dot)
+
+    ps, st = Lux.setup(MersenneTwister(1234), luxchain)
+    return Off_Model(luxchain, ps, st, model.n_orbs1, model.n_orbs2, false)
 end
 
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
