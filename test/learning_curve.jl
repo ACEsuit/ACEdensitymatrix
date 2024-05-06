@@ -6,8 +6,8 @@ include("../src/fit.jl")
 include("../src/io.jl")
 
 Ndata = 2000
-rcut = 10.0
-zcut = 10.0
+rcut = 15.0
+zcut = 15.0
 
 
 # read data
@@ -64,11 +64,11 @@ for (j, order) in enumerate(ordset)
         end
 
         # save the unfitted model first for use later
-        if haskey(DM.Models, 7)
-            save("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
-        else
-            save("test/CHO_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
-        end
+        # if haskey(DM.Models, 7)
+        #     save("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
+        # else
+        #     save("test/CHO_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
+        # end
 
         # fit the model, if it is not fully fitted yet
         if !isfitted(DM)
@@ -133,32 +133,32 @@ using Plots
 
 Folder = haskey(DM.Models, 7) ? "CHON_Models" : "CHO_Models"
     
-plt = plot(degreeset, RMSE_train[1,:], label = "Order $(ordset[1]): Training RMSE", xlabel = "Degree", ylabel = "RMSE")
-plot!(degreeset, RMSE_test[1,:], label = "Order $(ordset[1]): Test RMSE", linestyle = :dash)
+plt = plot(degreeset, log10.(RMSE_train[1,:]), label = "Order $(ordset[1]): Training RMSE", xlabel = "Degree", ylabel = "RMSE (10^y)")
+plot!(degreeset, log10.(RMSE_test[1,:]), label = "Order $(ordset[1]): Test RMSE", linestyle = :dash)
 for i in 2:size(RMSE_train,1)
-    plot!(degreeset, RMSE_train[2,:], label = "Order $(ordset[i]): Training RMSE")
-    plot!(degreeset, RMSE_test[2,:], label = "Order $(ordset[i]): Test RMSE", linestyle = :dash)
+    plot!(degreeset, log10.(RMSE_train[i,:]), label = "Order $(ordset[i]): Training RMSE")
+    plot!(degreeset, log10.(RMSE_test[i,:]), label = "Order $(ordset[i]): Test RMSE", linestyle = :dash)
 end
 title!("RMSE vs Degree")
-savefig("test/$Folder/RMSE_Order3&4_rcut$(rcut)_zcut$(zcut).png")
+savefig("test/$Folder/RMSE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
 
-plt = plot(degreeset, RE_train[1,:], label = "Order $(ordset[1]): Training Relative Error", xlabel = "Degree", ylabel = "RE")
-plot!(degreeset, RE_test[1,:], label = "Order $(ordset[1]): Test Relative Error", linestyle = :dash)
+plt = plot(degreeset, log10.(RE_train[1,:]), label = "Order $(ordset[1]): Training Relative Error", xlabel = "Degree", ylabel = "RE (10^y)")
+plot!(degreeset, log10.(RE_test[1,:]), label = "Order $(ordset[1]): Test Relative Error", linestyle = :dash)
 for i in 2:size(RE_train,1)
-    plot!(degreeset, RE_train[2,:], label = "Order $(ordset[i]): Training Relative Error")
-    plot!(degreeset, RE_test[2,:], label = "Order $(ordset[i]): Test Relative Error", linestyle = :dash)
+    plot!(degreeset, log10.(RE_train[i,:]), label = "Order $(ordset[i]): Training Relative Error")
+    plot!(degreeset, log10.(RE_test[i,:]), label = "Order $(ordset[i]): Test Relative Error", linestyle = :dash)
 end
 title!("RE vs Degree")
-savefig("test/$Folder/RE_Order3&4_rcut$(rcut)_zcut$(zcut).png")
+savefig("test/$Folder/RE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
 
-plt = plot(degreeset, MV_train[1,:], label = "Order $(ordset[1]): Training Manifold Violation", xlabel = "Degree", ylabel = "MV")
-plot!(degreeset, MV_test[1,:], label = "Order $(ordset[1]): Test Manifold Violation", linestyle = :dash)
+plt = plot(degreeset, log10.(MV_train[1,:]), label = "Order $(ordset[1]): Training Manifold Violation", xlabel = "Degree", ylabel = "MV (10^y)")
+plot!(degreeset, log10.(MV_test[1,:]), label = "Order $(ordset[1]): Test Manifold Violation", linestyle = :dash)
 for i in 2:size(MV_train,1)
-    plot!(degreeset, MV_train[2,:], label = "Order $(ordset[i]): Training Manifold Violation")
-    plot!(degreeset, MV_test[2,:], label = "Order $(ordset[i]): Test Manifold Violation", linestyle = :dash)
+    plot!(degreeset, log10.(MV_train[i,:]), label = "Order $(ordset[i]): Training Manifold Violation")
+    plot!(degreeset, log10.(MV_test[i,:]), label = "Order $(ordset[i]): Test Manifold Violation", linestyle = :dash)
 end
 title!("MV vs Degree")
-savefig("test/$Folder/MV_Order3&4_rcut$(rcut)_zcut$(zcut).png")
+savefig("test/$Folder/MV_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
 
 # converging meaning that we need to go to higher correlation order
 
