@@ -1,4 +1,5 @@
-using Statistics, PythonCall, JLD # , Plots
+using Statistics, JLD 
+# using  PythonCall # PythonCall is used only when we need to call SKLearn
 
 include("../src/data_manupulation.jl")
 include("../src/model_construction.jl")
@@ -6,12 +7,13 @@ include("../src/fit.jl")
 include("../src/io.jl")
 
 Ndata = 2000
-rcut = 15.0
-zcut = 15.0
+rcut = 10.0
+zcut = 10.0
 
 
 # read data
-filenames = ["data/propanol.h5"]#, "data/esanol.h5", "data/acrolein.h5", "data/phenol.h5", "data/toluene.h5", "data/acetaldehyde.h5", "data/aniline.h5", "data/nmacetamide.h5"]
+routine = "data/new_datasets"
+filenames = ["$routine/propanol.h5"]#, "data/esanol.h5", "data/acrolein.h5", "data/phenol.h5", "data/toluene.h5", "data/acetaldehyde.h5", "data/aniline.h5", "data/nmacetamide.h5"]
 frames = []
 train_set = Int.(0:floor(10000/Ndata):9999)
 for fname in filenames
@@ -30,8 +32,8 @@ frames_test = identity.(frames_test)
 
 # construct Models
 
-degreeset = 2:6
-ordset = 1:2
+degreeset = 2:10
+ordset = 1:1
 RE_train = zeros(length(ordset), length(degreeset))
 RMSE_train = zeros(length(ordset), length(degreeset))
 MV_train = zeros(length(ordset), length(degreeset))
@@ -39,7 +41,6 @@ RE_test = zeros(length(ordset), length(degreeset))
 RMSE_test = zeros(length(ordset), length(degreeset))
 MV_test = zeros(length(ordset), length(degreeset))
 
-# DM = load("test/CHON_Models/model_maxdeg9_ord$(order)_rcut$(rcut)_zcut$(zcut).jld")|> read_dict
 for (j, order) in enumerate(ordset)
     for (i, degree) in enumerate(degreeset)
 
@@ -161,6 +162,3 @@ title!("MV vs Degree")
 savefig("test/$Folder/MV_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
 
 # converging meaning that we need to go to higher correlation order
-
-# This observation inspires a fast way to construct the model
-# [DM.Models[6,6].model.layers.AA2BB.layers[i].op == DM.Models[6,8].model.layers.AA2BB.layers[i].op for i = 1:9] |> all
