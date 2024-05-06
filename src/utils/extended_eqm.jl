@@ -204,6 +204,10 @@ function _rpi_A2B_matrix_real(cgen::Rot3DCoeffs_loc{L1,L2,T}, spec) where {L1,L2
     return sparse(Irow, Jcol, SMatrix{2L1+1,2L2+1}.(Ref(ctran(L1)) .* vals .* Ref(ctran(L2)')), idxB, length(spec))
 end
 
+# Locally defined ConstLinearLayer and LinearLayer ========================
+using Polynomials4ML: @reqfields, _make_reqfields
+using ObjectPools: ArrayPool, FlexArray, FlexArrayCache, unwrap, release!
+
 struct ConstLinearLayer_loc{T} <: AbstractExplicitLayer
    op::T
    pos::Vector{Int}
@@ -211,6 +215,40 @@ end
 
 (l::ConstLinearLayer_loc)(x::AbstractArray, ps, st) = (l(x), st)
 (l::ConstLinearLayer_loc)(x) = l.op * x[l.pos]
+
+struct LinearLayer_loc{FEATFIRST} <: AbstractExplicitLayer
+   in_dim::Int
+   out_dim::Int
+   use_cache::Bool
+end
+
+LinearLayer_loc(in_dim::Int, out_dim::Int; feature_first = false, use_cache = true) = LinearLayer_loc{feature_first}(in_dim, out_dim, use_cache)
+
+function (l::LinearLayer_loc)(x::AbstractVector, ps, st)
+   out = ps.W * unwrap(x)
+   release!(x)
+   return out, st
+end
+
+function (l::LinearLayer_loc{true})(x::AbstractMatrix, ps, st)
+   out = ps.W * unwrap(x)
+   release!(x)
+   return out, st
+end
+
+(l::LinearLayer_loc{false})(x::AbstractMatrix, ps, st) = begin
+   out = unwrap(x) * transpose(ps.W)
+   release!(x)
+   return out, st
+end
+
+LuxCore.initialparameters(rng::AbstractRNG, l::LinearLayer_loc) = 
+      ( W = randn(rng, l.out_dim, l.in_dim), )
+
+LuxCore.initialstates(rng::AbstractRNG, l::LinearLayer_loc) = 
+      ( l.use_cache ?  (pool =  ArrayPool(FlexArrayCache), ) 
+                    : (pool =  ArrayPool(FlexArray), ))
+## =====================================================================================
 
 # Can add a reduce = true/false option to simplify onsite basis
 function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::Int64; categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState = true, isreal = true)
@@ -298,7 +336,7 @@ function equivariant_operator(spec_nlm, radial::Radial_basis, L1::Int64, L2::Int
 
     len = [size(luxchain.layers.AA2BB.layers[i].op,1) for i = 1:(L1+1)*(L2+1)]
     
-    Linear_layer = Lux.Parallel(nothing, [Polynomials4ML.LinearLayer(len[i], ext_n_orbs[i]) for i = 1:(L1+1)*(L2+1)]... )
+    Linear_layer = Lux.Parallel(nothing, [LinearLayer_loc(len[i], ext_n_orbs[i]) for i = 1:(L1+1)*(L2+1)]... )
     luxchain = append_layer(luxchain, Linear_layer; l_name = :dot)
 
     ps, st = Lux.setup(MersenneTwister(1234), luxchain)
