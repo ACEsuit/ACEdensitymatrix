@@ -4,7 +4,7 @@ const Default_Polynomial_Type = legendre_basis
 
 # TODO: A patch to EquivariantModels.simple_radial_basis - cutoff is done for something before transformation
 import EquivariantModels: simple_radial_basis
-function simple_radial_basis(basis::ScalarPoly4MLBasis,f_cut::Function=r->1,f_trans::Function=r->r; spec = nothing, isState = false)
+function simple_radial_basis(basis::ScalarPoly4MLBasis,f_cut::Function=r->1,f_trans::Function=r->r; spec = nothing, isState = true)
     if isnothing(spec)
         try 
            spec = natural_indices(basis)
@@ -14,8 +14,7 @@ function simple_radial_basis(basis::ScalarPoly4MLBasis,f_cut::Function=r->1,f_tr
      end
   
      _norm(x) = isState ? norm(x.rr) : norm(x)
-     return Radial_basis(Chain(split = Lux.Parallel(nothing; trans = WrappedFunction(x -> f_trans.(_norm.(x))), id = WrappedFunction(identity)), evaluation = Lux.Parallel(nothing; poly = lux(basis), cutoff = WrappedFunction(x -> f_cut.(_norm.(x)))), env = WrappedFunction(x -> x[1].*x[2]), ), spec)
-     # return Radial_basis(Chain(trans = WrappedFunction(x -> f_trans.(_norm.(x))), evaluation = Lux.BranchLayer(poly = lux(basis), cutoff = WrappedFunction(x -> f_cut.(x))), env = WrappedFunction(x -> x[1].*x[2]), ), spec)
+     return Radial_basis(Chain(split = Lux.Parallel(nothing; trans = WrappedFunction(x -> f_trans.(_norm.(x))), get_norm = WrappedFunction(x -> _norm.(x))), evaluation = Lux.Parallel(nothing; poly = lux(basis), cutoff = WrappedFunction(x -> f_cut.(x))), env = WrappedFunction(x -> x[1].*x[2]), ), spec)
 end
 
 # Standard cutoff function
