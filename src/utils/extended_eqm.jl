@@ -4,6 +4,7 @@ using Lux: AbstractExplicitLayer
 import EquivariantModels: _rpi_A2B_matrix, _valtype, rpe_basis, RPE_filter
 
 ## Construct a new EQM that generates also tensorial basis
+# TODO: Lux has also a ReshapeLayer that could be used - might be a way to get rid of Rot3DCoeffs_loc
 _valtype(op::AbstractMatrix{<: AbstractMatrix}, x::AbstractArray{<: Number}) = SMatrix{size(op[1],1), size(op[1],2), promote_type(eltype(op[1]), eltype(x[1][1]))}
 _valtype(op::AbstractMatrix{<: AbstractMatrix}, x::AbstractArray{<: AbstractMatrix}) = SMatrix{size(op[1],1), size(op[1],2), promote_type(eltype(op[1]), eltype(x[1][1]))}
 
