@@ -64,9 +64,9 @@ MV = 0
 train_ref = Vector{Float64}()
 train_pred = Vector{Float64}()
 for frame in frames
-    R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
-    D_p = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix w/o retraction
-    D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"];retraction = D -> eigen_retraction(D,Int(round(tr(D))))) # predicted density matrix w/ default retraction
+    R, D, ao_lab, at_no = translate_frame(frame)["R"], translate_frame(frame)["D"], translate_frame(frame)["ao_labels"], translate_frame(frame)["atomic_numbers"]
+    D_p = eval_model(DM, R, ao_lab) # predicted density matrix w/o retraction
+    D_pred = eval_model(DM, R, ao_lab; retraction = D -> eigen_retraction(D,Int(sum(at_no)/2))) # predicted density matrix w/ default retraction
     @assert norm(D_pred - D) ≤ norm(D_p - D) # check if the retraction helps
     push!(train_ref, vec(D)...)
     push!(train_pred, vec(D_pred)...)
@@ -86,9 +86,9 @@ MV = 0
 test_ref = Vector{Float64}()
 test_pred = Vector{Float64}()
 for frame in frames_test
-    R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
-    D_p = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix w/o retraction
-    D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]; retraction = D -> eigen_retraction(D,Int(round(tr(D))))) # predicted density matrix w/ default retraction
+    R, D, ao_lab, at_no = translate_frame(frame)["R"], translate_frame(frame)["D"], translate_frame(frame)["ao_labels"], translate_frame(frame)["atomic_numbers"]
+    D_p = eval_model(DM, R, ao_lab) # predicted density matrix w/o retraction
+    D_pred = eval_model(DM, R, ao_lab; retraction = D -> eigen_retraction(D,Int(sum(at_no)/2))) # predicted density matrix w/ default retraction
     @assert norm(D_pred - D) ≤ norm(D_p - D) # check if the retraction helps
     push!(test_ref, vec(D)...)
     push!(test_pred, vec(D_pred)...)
