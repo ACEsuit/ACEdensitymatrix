@@ -123,7 +123,7 @@ function Density_Model(ao_dict::Dict{TP, Dict{String, Any}}) where TP # There is
     return Density_Model{TP}(dict)
 end
 
-function eval_model(model::Density_Model, R::Union{State{T}, Vector{State{T}}}, ao_labels::Union{Vector{String},Matrix{String}}) where {T}
+function eval_model(model::Density_Model, R::Union{State{T}, Vector{State{T}}}, ao_labels::Union{Vector{String},Matrix{String}}; retraction::Function=identity) where {T}
     # R is a global configuration - a State or a vector of State objects
     # ao_labels is the labels of atoms and the corresponding basis sets
     # the output is the density matrix, ordering as the ao_labels
@@ -156,7 +156,7 @@ function eval_model(model::Density_Model, R::Union{State{T}, Vector{State{T}}}, 
         end
     end
 
-    return D
+    return retraction(D)
     
 end
 

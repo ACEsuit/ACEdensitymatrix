@@ -5,14 +5,10 @@ include("../src/model_construction.jl")
 include("../src/fit.jl")
 include("../src/io.jl")
 
-Ndata = 200
-rcut = 10.0
-zcut = 10.0
-degree = 4
-order = 3
+Ndata = 1000
 
 # read data 
-filenames = ["data/propanol.h5", "data/esanol.h5", "data/acrolein.h5", "data/phenol.h5", "data/toluene.h5", "data/acetaldehyde.h5", "data/aniline.h5", "data/nmacetamide.h5"]
+filenames = ["data/propanol.h5"]#, "data/esanol.h5", "data/acrolein.h5", "data/phenol.h5", "data/toluene.h5", "data/acetaldehyde.h5", "data/aniline.h5", "data/nmacetamide.h5"]
 frames = []
 for fname in filenames
     molecule = TrajectoryHDF5(fname)
@@ -27,25 +23,39 @@ for fname in filenames
 end
 frames_test = identity.(frames_test)
 
-# construct a model 
-ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut), 
-                6 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
-                7 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
-                8 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut) )
+# Load / construct a model 
+# parameters
+rcut = 10.0
+zcut = 10.0
+degree = 4
+order = 2
 
-println("Constructing the model ...")
+# Try load a model (and when necessary, do a refit)
+to_be_saved = false
+println("Loading / Constructing the model ...")
 println()
+try 
+    DM = load("test/CHO_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld")|> read_dict
 
-DM = Density_Model(ao_dict::Dict) # a density matrix model corresponding to the atomic orbital dictionary
+    println("Model loaded!")
+    println()
+catch
+    ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut), 
+                    6 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
+                    # 7 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
+                    8 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut) )
 
-println("Model constructed!")
-println()
+    DM = Density_Model(ao_dict::Dict); # a density matrix model corresponding to the atomic orbital dictionary
 
-# fit the model
-fit!(DM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I))
+    println("Model constructed!")
+    println()
 
-# load model
-DM = load("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld")|> read_dict
+    # Fitting
+    if !isfitted(DM) # this should in principle be outside this loop, but currently the DM model is always not fitted because there is a lack of N-N and O-O offsite data
+        fit!(DM, frames; solver = ACEfit.LSQR())
+        global to_be_saved = true # if the model is refitted, it should be saved or overwritten
+    end
+end
 
 # validate the model - Training
 RE = 0
@@ -55,7 +65,9 @@ train_ref = Vector{Float64}()
 train_pred = Vector{Float64}()
 for frame in frames
     R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
-    D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix
+    D_p = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix w/o retraction
+    D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"];retraction = D -> eigen_retraction(D,Int(round(tr(D))))) # predicted density matrix w/ default retraction
+    @assert norm(D_pred - D) ≤ norm(D_p - D) # check if the retraction helps
     push!(train_ref, vec(D)...)
     push!(train_pred, vec(D_pred)...)
     RMSE += norm(D_pred - D)^2/(size(D,1)*size(D,2))
@@ -75,7 +87,9 @@ test_ref = Vector{Float64}()
 test_pred = Vector{Float64}()
 for frame in frames_test
     R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
-    D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix
+    D_p = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix w/o retraction
+    D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]; retraction = D -> eigen_retraction(D,Int(round(tr(D))))) # predicted density matrix w/ default retraction
+    @assert norm(D_pred - D) ≤ norm(D_p - D) # check if the retraction helps
     push!(test_ref, vec(D)...)
     push!(test_pred, vec(D_pred)...)
     RMSE += norm(D_pred - D)^2/(size(D,1)*size(D,2))
@@ -93,13 +107,15 @@ println()
 # savefig("Error_Degree$(parsed_args["degree"])_Ord$(parsed_args["order"])")
 
 # save the model
-println("Saving the model ...")
-println()
+if to_be_saved
+    println("Saving the model ...")
+    println()
 
-save("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
+    save("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
 
-println("Model saved!")
-println()
+    println("Model saved!")
+    println()
+end
 
 println("Done.")
 
@@ -110,11 +126,12 @@ println("Done.")
 # @show eval_model(dm, R, translate_frame(frames[1])["ao_labels"]) == eval_model(DM, R, translate_frame(frames[1])["ao_labels"])
 
 using Plots
-train_pred = train_pred[findall(x -> x<0.9, train_pred)]
+
+train_pred = train_pred[findall(x -> x<0.9, train_ref)]
 train_ref = train_ref[findall(x -> x<0.9, train_ref)]
-test_pred = test_pred[findall(x -> x<0.9, test_pred)]
+test_pred = test_pred[findall(x -> x<0.9, test_ref)]
 test_ref = test_ref[findall(x -> x<0.9, test_ref)]
-pos = Int.(1:floor(length(train_ref)/3000):length(train_ref))
+pos = Int.(1:floor(length(train_ref)/8000):length(train_ref))
 
 plot(train_ref[pos], train_ref[pos], label = "Reference")
 scatter!(train_ref[pos], train_pred[pos], label = "Training")
