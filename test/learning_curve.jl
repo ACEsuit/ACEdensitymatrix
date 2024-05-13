@@ -23,7 +23,7 @@ end
 frames = identity.(frames)
 
 frames_test = []
-test_set = rand(setdiff(0:9999, train_set), Ndata)
+test_set = setdiff(0:9999, train_set) # rand(setdiff(0:9999, train_set), Ndata)
 for fname in filenames
     molecule = TrajectoryHDF5(fname)
     push!(frames_test,[ read_frame(molecule,Int(i)) for i in test_set ]...) # constructing a test data set with Ndata frames for a single .h5 file
@@ -33,19 +33,24 @@ frames_test = identity.(frames_test)
 # construct Models
 
 degreeset = 2:10
-ordset = 1:1
-RE_train = zeros(length(ordset), length(degreeset))
+ordset = 1:2
+# RE_train = zeros(length(ordset), length(degreeset))
 RMSE_train = zeros(length(ordset), length(degreeset))
+RMSE_train_retract = zeros(length(ordset), length(degreeset))
 MV_train = zeros(length(ordset), length(degreeset))
-RE_test = zeros(length(ordset), length(degreeset))
+MV_train_retract = zeros(length(ordset), length(degreeset))
+# RE_test = zeros(length(ordset), length(degreeset))
 RMSE_test = zeros(length(ordset), length(degreeset))
+RMSE_test_retract = zeros(length(ordset), length(degreeset))
 MV_test = zeros(length(ordset), length(degreeset))
+MV_test_retract = zeros(length(ordset), length(degreeset))
 
 for (j, order) in enumerate(ordset)
     for (i, degree) in enumerate(degreeset)
 
         println("Constructing/Loading the order $order degree $degree model ...")
         println()
+        refit = false
 
         try 
             global DM = load("test/CHO_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld")|> read_dict
@@ -53,6 +58,10 @@ for (j, order) in enumerate(ordset)
             println("Model loaded!")
             println()
         catch
+            println("Model doesn't exist / fails to be loaded ...")
+            println("Start construction ...")
+            println()
+
             ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut), 
                             6 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
                             # 7 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
@@ -62,66 +71,76 @@ for (j, order) in enumerate(ordset)
 
             println("Model constructed!")
             println()
-        end
 
-        # save the unfitted model first for use later
-        # if haskey(DM.Models, 7)
-        #     save("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
-        # else
-        #     save("test/CHO_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
-        # end
-
-        # fit the model, if it is not fully fitted yet
-        if !isfitted(DM)
-            fit!(DM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I))
-            # fit!(DM, frames)
+            # fit the model, if it is not fully fitted yet
+            if !isfitted(DM)
+                fit!(DM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I))
+                # fit!(DM, frames)
+            end
+            refit = true
         end
 
         # validate the model - Training
         for frame in frames
-            R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
-            D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix
+            R, D, atomic_number, ao_labels = translate_frame(frame)["R"], translate_frame(frame)["D"], translate_frame(frame)["atomic_numbers"], translate_frame(frame)["ao_labels"]
+            D_pred = eval_model(DM, R, ao_labels) # predicted density matrix
+            D_pred_retract = eval_model(DM, R, ao_labels, retraction = D -> eigen_retraction(D, Int(sum(atomic_number)/2))) # predicted density matrix
             RMSE_train[j,i] += norm(D_pred - D)^2/(size(D,1)*size(D,2))
-            RE_train[j,i] += norm(D_pred - D)/norm(D)
+            RMSE_train_retract[j,i] += norm(D_pred_retract - D)^2/(size(D,1)*size(D,2))
+            # RE_train[j,i] += norm(D_pred - D)/norm(D)
             MV_train[j,i] += norm(D_pred * D_pred - D_pred)
+            MV_train_retract[j,i] += norm(D_pred_retract * D_pred_retract - D_pred_retract)
         end
         RMSE_train[j,i] = sqrt(RMSE_train[j,i]/length(frames))
-        RE_train[j,i] /= length(frames)
+        RMSE_train_retract[j,i] = sqrt(RMSE_train_retract[j,i]/length(frames))
+        # RE_train[j,i] /= length(frames)
         MV_train[j,i] /= length(frames)
+        MV_train_retract[j,i] /= length(frames)
 
         println("Training RMSE per matrix element = $(RMSE_train[j,i])")
-        println("Average training relative error in D: ||D - D_ref|| / ||D||= $(RE_train[j,i])")
+        println("Training RMSE per matrix element (retracted) = $(RMSE_train_retract[j,i])")
+        # println("Average training relative error in D: ||D - D_ref|| / ||D||= $(RE_train[j,i])")
         println("Average training manifold violation = $(MV_train[j,i])")
+        println("Average training manifold violation (retracted) = $(MV_train_retract[j,i])")
         println()
 
         for frame in frames_test
-            R, D = translate_frame(frame)["R"], translate_frame(frame)["D"]
+            R, D, atomic_number, ao_labels = translate_frame(frame)["R"], translate_frame(frame)["D"], translate_frame(frame)["atomic_numbers"], translate_frame(frame)["ao_labels"]
             D_pred = eval_model(DM, R, translate_frame(frame)["ao_labels"]) # predicted density matrix
+            D_pred_retract = eval_model(DM, R, translate_frame(frame)["ao_labels"], retraction =  D -> eigen_retraction(D, Int(sum(atomic_number)/2))) # predicted density matrix with retraction
             RMSE_test[j,i] += norm(D_pred - D)^2/(size(D,1)*size(D,2))
-            RE_test[j,i] += norm(D_pred - D)/norm(D)
+            RMSE_test_retract[j,i] += norm(D_pred_retract - D)^2/(size(D,1)*size(D,2))
+            # RE_test[j,i] += norm(D_pred - D)/norm(D)
             MV_test[j,i] += norm(D_pred * D_pred - D_pred)
+            MV_test_retract[j,i] += norm(D_pred_retract * D_pred_retract - D_pred_retract)
         end
 
         RMSE_test[j,i] = sqrt(RMSE_test[j,i]/length(frames_test))
-        RE_test[j,i] /= length(frames_test)
+        RMSE_test_retract[j,i] = sqrt(RMSE_test_retract[j,i]/length(frames_test))
+        # RE_test[j,i] /= length(frames_test)
         MV_test[j,i] /= length(frames_test)
+        MV_test_retract[j,i] /= length(frames_test)
     
         println("Test RMSE per matrix element = $(RMSE_test[j,i])")
-        println("Average test relative error in D: ||D - D_ref|| / ||D||= $(RE_test[j,i])")
+        println("Test RMSE per matrix element (retracted) = $(RMSE_test_retract[j,i])")
+        # println("Average test relative error in D: ||D - D_ref|| / ||D||= $(RE_test[j,i])")
         println("Average test manifold violation = $(MV_test[j,i])")
+        println("Average test manifold violation (retracted) = $(MV_test_retract[j,i])")
         println()
 
-        println("Saving the model ...")
-        println()
+        if refit
+            println("Saving the model ...")
+            println()
 
-        if haskey(DM.Models, 7)
-            save("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
-        else
-            save("test/CHO_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
+            if haskey(DM.Models, 7)
+                save("test/CHON_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
+            else
+                save("test/CHO_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
+            end
+
+            println("Model saved!")
+            println()
         end
-
-        println("Model saved!")
-        println()
 
         println("Done for order $order degree $degree model")
         println()
@@ -134,31 +153,39 @@ using Plots
 
 Folder = haskey(DM.Models, 7) ? "CHON_Models" : "CHO_Models"
     
-plt = plot(degreeset, log10.(RMSE_train[1,:]), label = "Order $(ordset[1]): Training RMSE", xlabel = "Degree", ylabel = "RMSE (10^y)")
-plot!(degreeset, log10.(RMSE_test[1,:]), label = "Order $(ordset[1]): Test RMSE", linestyle = :dash)
+plt = plot(degreeset, log10.(RMSE_train[1,:]), label = "Order $(ordset[1]): Training RMSE", xlabel = "Degree", ylabel = "RMSE (10^y)", legendfontsize=7, color = 1)
+plot!(degreeset, log10.(RMSE_test[1,:]), label = "Order $(ordset[1]): Test RMSE", linestyle = :dash, color = 1)
+plot!(degreeset, log10.(RMSE_train_retract[1,:]), label = "Order $(ordset[1]): Training RMSE (retracted)", color = 1, markers = :diamond)
+plot!(degreeset, log10.(RMSE_test_retract[1,:]), label = "Order $(ordset[1]): Test RMSE (retracted)", linestyle = :dash, color = 1, markers = :diamond)
 for i in 2:size(RMSE_train,1)
-    plot!(degreeset, log10.(RMSE_train[i,:]), label = "Order $(ordset[i]): Training RMSE")
-    plot!(degreeset, log10.(RMSE_test[i,:]), label = "Order $(ordset[i]): Test RMSE", linestyle = :dash)
+    plot!(degreeset, log10.(RMSE_train[i,:]), label = "Order $(ordset[i]): Training RMSE", color = i)
+    plot!(degreeset, log10.(RMSE_test[i,:]), label = "Order $(ordset[i]): Test RMSE", linestyle = :dash, color = i)
+    plot!(degreeset, log10.(RMSE_train_retract[i,:]), label = "Order $(ordset[i]): Training RMSE (retracted)", color = i, marker = :diamond)
+    plot!(degreeset, log10.(RMSE_test_retract[i,:]), label = "Order $(ordset[i]): Test RMSE (retracted)", linestyle = :dash, color = i, marker = :diamond)
 end
 title!("RMSE vs Degree")
 savefig("test/$Folder/RMSE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
 
-plt = plot(degreeset, log10.(RE_train[1,:]), label = "Order $(ordset[1]): Training Relative Error", xlabel = "Degree", ylabel = "RE (10^y)")
-plot!(degreeset, log10.(RE_test[1,:]), label = "Order $(ordset[1]): Test Relative Error", linestyle = :dash)
-for i in 2:size(RE_train,1)
-    plot!(degreeset, log10.(RE_train[i,:]), label = "Order $(ordset[i]): Training Relative Error")
-    plot!(degreeset, log10.(RE_test[i,:]), label = "Order $(ordset[i]): Test Relative Error", linestyle = :dash)
-end
-title!("RE vs Degree")
-savefig("test/$Folder/RE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
+# plt = plot(degreeset, log10.(RE_train[1,:]), label = "Order $(ordset[1]): Training Relative Error", xlabel = "Degree", ylabel = "RE (10^y)")
+# plot!(degreeset, log10.(RE_test[1,:]), label = "Order $(ordset[1]): Test Relative Error", linestyle = :dash)
+# for i in 2:size(RE_train,1)
+#     plot!(degreeset, log10.(RE_train[i,:]), label = "Order $(ordset[i]): Training Relative Error")
+#     plot!(degreeset, log10.(RE_test[i,:]), label = "Order $(ordset[i]): Test Relative Error", linestyle = :dash)
+# end
+# title!("RE vs Degree")
+# savefig("test/$Folder/RE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
 
-plt = plot(degreeset, log10.(MV_train[1,:]), label = "Order $(ordset[1]): Training Manifold Violation", xlabel = "Degree", ylabel = "MV (10^y)")
-plot!(degreeset, log10.(MV_test[1,:]), label = "Order $(ordset[1]): Test Manifold Violation", linestyle = :dash)
+plt = plot(degreeset, MV_train[1,:], label = "Order $(ordset[1]): Training Manifold Violation", xlabel = "Degree", ylabel = "\|D_{pred}^2-D_{pred}\|", legendfontsize=7, color = 1, legend = :right)
+plot!(degreeset, MV_test[1,:], label = "Order $(ordset[1]): Test Manifold Violation", linestyle = :dash, color = 1)
+plot!(degreeset, MV_train_retract[1,:], label = "Order $(ordset[1]): Training Manifold Violation (retracted)", color = 1, marker = :diamond)
+plot!(degreeset, MV_test_retract[1,:], label = "Order $(ordset[1]): Test Manifold Violation (retracted)", linestyle = :dash, color = 1, marker = :diamond)
 for i in 2:size(MV_train,1)
-    plot!(degreeset, log10.(MV_train[i,:]), label = "Order $(ordset[i]): Training Manifold Violation")
-    plot!(degreeset, log10.(MV_test[i,:]), label = "Order $(ordset[i]): Test Manifold Violation", linestyle = :dash)
+    plot!(degreeset, MV_train[i,:], label = "Order $(ordset[i]): Training Manifold Violation", color = i)
+    plot!(degreeset, MV_test[i,:], label = "Order $(ordset[i]): Test Manifold Violation", linestyle = :dash, color = i)
+    plot!(degreeset, MV_train_retract[i,:], label = "Order $(ordset[i]): Training Manifold Violation (retracted)", color = i, marker = :diamond)
+    plot!(degreeset, MV_test_retract[i,:], label = "Order $(ordset[i]): Test Manifold Violation (retracted)", linestyle = :dash, color = i, marker = :diamond)
 end
-title!("MV vs Degree")
+title!("Manifold Violation vs Degree")
 savefig("test/$Folder/MV_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
 
 # converging meaning that we need to go to higher correlation order
