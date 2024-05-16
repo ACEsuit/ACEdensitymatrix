@@ -7,25 +7,29 @@ include("../src/io.jl")
 
 # model construction - constructing a whole Density_Model from a ao_dict that indicating the atomic orbital dictionary
 # parameters 
-ao_dict = Dict( 6 => Dict("n_orbs" => [3,2,1], "maxdeg" => 2, "ord" => 2, "rcut" => 10.0, "zcut" => 10.0), 
-                1 => Dict("n_orbs" => [2], "maxdeg" => 2, "ord" => 2, "rcut" => 10.0, "zcut" => 10.0),
-                8 => Dict("n_orbs" => [3,2,1], "maxdeg" => 2, "ord" => 2, "rcut" => 10.0, "zcut" => 10.0) )
+ao_dict_1 = Dict( 6 => Dict("n_orbs" => [3,2,1], "maxdeg" => 2, "ord" => 2, "rcut" => 10.0, "zcut" => 10.0), 
+                  1 => Dict("n_orbs" => [2], "maxdeg" => 2, "ord" => 2, "rcut" => 10.0, "zcut" => 10.0),
+                  8 => Dict("n_orbs" => [3,2,1], "maxdeg" => 2, "ord" => 2, "rcut" => 10.0, "zcut" => 10.0) )
+ao_dict_2 = Dict( 6 => Dict("n_orbs" => [3,2,1], "maxdeg" => 2, "ord" => 2, "rcut_on" => 10.0, "rcut_off" => 10.0, "zcut" => 10.0), 
+                  1 => Dict("n_orbs" => [2], "maxdeg" => 2, "ord" => 2, "rcut_on" => 10.0, "rcut_off" => 10.0, "zcut" => 10.0),
+                  8 => Dict("n_orbs" => [3,2,1], "maxdeg" => 2, "ord" => 2, "rcut_on" => 10.0, "rcut_off" => 10.0, "zcut" => 10.0) )
 
-DM = Density_Model(ao_dict) # a density matrix model corresponding to the atomic orbital dictionary
+DM1 = Density_Model(ao_dict_1) # a density matrix model corresponding to the atomic orbital dictionary
+DM2 = Density_Model(ao_dict_2) # a density matrix model corresponding to the atomic orbital dictionary
 
 # randomly extract submodels from the whole model
-Zi = rand(keys(ao_dict))::Int
-Zj = rand(keys(ao_dict))::Int
+Zi = rand(keys(ao_dict_1))::Int
+Zj = rand(keys(ao_dict_1))::Int
 Zi, Zj = min(Zi,Zj), max(Zi,Zj)
-onsite_model = DM.Models[Zi]
-offsite_model = DM.Models[Zi, Zj]
+onsite_model = DM1.Models[Zi]
+offsite_model = DM1.Models[Zi, Zj]
 
 # construct random configurations
 
-Ron = [State(rr = SVector{3}(rand(3)), Zi = Zi, Zj = rand(keys(ao_dict))) for i = 1:10]
+Ron = [State(rr = SVector{3}(rand(3)), Zi = Zi, Zj = rand(keys(ao_dict_1))) for i = 1:10]
 Roff = begin 
     rr0 = SVector{3}(rand(3))
-    Roff = [State(rr = SVector{3}(rand(3)), rr0 = rr0, Zi = Zi, Zj = Zj, Zk = rand(keys(ao_dict)), bond = false) for i = 1:10]
+    Roff = [State(rr = SVector{3}(rand(3)), rr0 = rr0, Zi = Zi, Zj = Zj, Zk = rand(keys(ao_dict_1)), bond = false) for i = 1:10]
     push!(Roff, State(rr = rr0, rr0 = rr0, Zi = Zi, Zj = Zj, Zk = Zj, bond = true))
 end
 
