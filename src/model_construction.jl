@@ -97,25 +97,27 @@ function Density_Model(ao_dict::Dict{TP, Dict{String, Any}}) where TP # There is
     dict = Dict{Union{TP,Tuple{TP,TP}},AbstractModel}()
 
     for zs in on_classes
-        push!(dict, zs[1] => On_Model(ao_dict[zs[1]]["maxdeg"], ao_dict[zs[1]]["ord"], ao_dict[zs[1]]["rcut"], zs[1], Zs, length(ao_dict[zs[1]]["n_orbs"])-1, ao_dict[zs[1]]["n_orbs"]))
+        onsite_cutoff = haskey(ao_dict[zs[1]], "rcut_on") ? "rcut_on" : "rcut"
+        push!(dict, zs[1] => On_Model(ao_dict[zs[1]]["maxdeg"], ao_dict[zs[1]]["ord"], ao_dict[zs[1]][onsite_cutoff], zs[1], Zs, length(ao_dict[zs[1]]["n_orbs"])-1, ao_dict[zs[1]]["n_orbs"]))
         
         if length(zs) > 1
             AA2BB = Dict("AA2BBmap" => [ dict[zs[1]].model.layers.AA2BB.layers[i].op for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)],
                          "AA2BBpos" => [ dict[zs[1]].model.layers.AA2BB.layers[i].pos for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)])
             for k = 2:length(zs)
-                push!(dict, zs[k] => On_Model(ao_dict[zs[k]]["maxdeg"], ao_dict[zs[k]]["ord"], ao_dict[zs[k]]["rcut"], zs[k], Zs, length(ao_dict[zs[k]]["n_orbs"])-1, ao_dict[zs[k]]["n_orbs"], AA2BB = AA2BB))
+                push!(dict, zs[k] => On_Model(ao_dict[zs[k]]["maxdeg"], ao_dict[zs[k]]["ord"], ao_dict[zs[k]][onsite_cutoff], zs[k], Zs, length(ao_dict[zs[k]]["n_orbs"])-1, ao_dict[zs[k]]["n_orbs"], AA2BB = AA2BB))
             end
         end
     end
 
     for zs in off_classes
-        push!(dict, zs[1] => Off_Model(maximum([ao_dict[zs[1][1]]["maxdeg"],ao_dict[zs[1][2]]["maxdeg"]]), maximum([ao_dict[zs[1][1]]["ord"],ao_dict[zs[1][2]]["ord"]]), maximum([ao_dict[zs[1][1]]["rcut"], ao_dict[zs[1][2]]["rcut"]]), maximum([ao_dict[zs[1][1]]["zcut"], ao_dict[zs[1][2]]["zcut"]]), zs[1][1], zs[1][2], Zs, length(ao_dict[zs[1][1]]["n_orbs"])-1, length(ao_dict[zs[1][2]]["n_orbs"])-1, ao_dict[zs[1][1]]["n_orbs"], ao_dict[zs[1][2]]["n_orbs"]))
+        offsite_cutoff = haskey(ao_dict[zs[1][1]], "rcut_off") ? "rcut_off" : "rcut"
+        push!(dict, zs[1] => Off_Model(maximum([ao_dict[zs[1][1]]["maxdeg"],ao_dict[zs[1][2]]["maxdeg"]]), maximum([ao_dict[zs[1][1]]["ord"],ao_dict[zs[1][2]]["ord"]]), ao_dict[zs[1][1]][offsite_cutoff], ao_dict[zs[1][2]][offsite_cutoff], maximum([ao_dict[zs[1][1]]["zcut"], ao_dict[zs[1][2]]["zcut"]]), zs[1][1], zs[1][2], Zs, length(ao_dict[zs[1][1]]["n_orbs"])-1, length(ao_dict[zs[1][2]]["n_orbs"])-1, ao_dict[zs[1][1]]["n_orbs"], ao_dict[zs[1][2]]["n_orbs"]))
 
         if length(zs) > 1
             AA2BB = Dict("AA2BBmap" => [ dict[zs[1]].model.layers.AA2BB.layers[i].op for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)],
                          "AA2BBpos" => [ dict[zs[1]].model.layers.AA2BB.layers[i].pos for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)])
             for k = 2:length(zs)
-                push!(dict, zs[k] => Off_Model(maximum([ao_dict[zs[k][1]]["maxdeg"],ao_dict[zs[k][2]]["maxdeg"]]), maximum([ao_dict[zs[k][1]]["ord"],ao_dict[zs[k][2]]["ord"]]), maximum([ao_dict[zs[k][1]]["rcut"], ao_dict[zs[k][2]]["rcut"]]), maximum([ao_dict[zs[k][1]]["zcut"], ao_dict[zs[k][2]]["zcut"]]), zs[k][1], zs[k][2], Zs, length(ao_dict[zs[k][1]]["n_orbs"])-1, length(ao_dict[zs[k][2]]["n_orbs"])-1, ao_dict[zs[k][1]]["n_orbs"], ao_dict[zs[k][2]]["n_orbs"], AA2BB = AA2BB) )
+                push!(dict, zs[k] => Off_Model(maximum([ao_dict[zs[k][1]]["maxdeg"],ao_dict[zs[k][2]]["maxdeg"]]), maximum([ao_dict[zs[k][1]]["ord"],ao_dict[zs[k][2]]["ord"]]), ao_dict[zs[k][1]][offsite_cutoff], ao_dict[zs[k][2]][offsite_cutoff], maximum([ao_dict[zs[k][1]]["zcut"], ao_dict[zs[k][2]]["zcut"]]), zs[k][1], zs[k][2], Zs, length(ao_dict[zs[k][1]]["n_orbs"])-1, length(ao_dict[zs[k][2]]["n_orbs"])-1, ao_dict[zs[k][1]]["n_orbs"], ao_dict[zs[k][2]]["n_orbs"], AA2BB = AA2BB) )
             end
         end
     end
@@ -163,6 +165,8 @@ end
 # reset_cutoff function is used to reset the cutoff of the model (it does not change the model itself but create a new one with new cutoffs)
 # after resetting the cutoff, we need to refit the model so isfitted model is always set to be false
 reset_cutoff(model::Density_Model, r_cut::Float64, z_cut::Float64) = Density_Model( Dict([ (key => reset_cutoff(model.Models[key], r_cut, z_cut)) for key in keys(model.Models)] ) )
+reset_cutoff(model::Density_Model, r_cut_on::Float64, r_cut_off1::Float64, r_cut_off2::Float64, z_cut::Float64) = 
+            Density_Model( Dict([ (key => length(key) == 1 ? reset_cutoff(model.Models[key], r_cut_on, z_cut) : reset_cutoff(model.Models[key], r_cut_off1, r_cut_off2, z_cut)) for key in keys(model.Models)] ) )
 
 function reset_cutoff(model::On_Model, r_cut::Float64, z_cut::Float64)
     degree = model.model.layers.embed.layers.Rn.maxdeg
@@ -179,21 +183,23 @@ function reset_cutoff(model::On_Model, r_cut::Float64, z_cut::Float64)
     return On_Model(luxchain, ps, st, model.n_orbs, false)
 end
 
-function reset_cutoff(model::Off_Model, r_cut::Float64, z_cut::Float64)
+function reset_cutoff(model::Off_Model, r_cut1::Float64, r_cut2::Float64, z_cut::Float64)
     degree = model.model.layers.embed.layers.Rn.maxdeg
-    r_cut_old = model.model.layers.embed.layers.Rn.rcut
+    r_cut_old = try; (model.model.layers.embed.layers.Rn.rcut, model.model.layers.embed.layers.Rn.rcut); catch; (model.model.layers.embed.layers.Rn.rcut1, model.model.layers.embed.layers.Rn.rcut2); end
     z_cut_old = model.model.layers.embed.layers.Rn.zcut
-    if r_cut_old == r_cut && z_cut_old == z_cut
+    if r_cut_old == (r_cut1, r_cut2) && z_cut_old == z_cut
         @warn("The cutoffs are already set as is. No change is made.")
         return model
     end
-    Rn_new = offsite_radial_basis(degree, r_cut, z_cut)
+    Rn_new = offsite_radial_basis(degree, r_cut1, r_cut2, z_cut)
     embed_new = Lux.Parallel(nothing; Rn = Rn_new.Rnl, Ylm = model.model.layers.embed.layers.Ylm, δs = model.model.layers.embed.layers.δs)
     luxchain = Chain(embed = embed_new, A = model.model.layers.A, AA = model.model.layers.AA, AA2BB = model.model.layers.AA2BB, stablize = model.model.layers.stablize, dot = model.model.layers.dot)
 
     ps, st = Lux.setup(MersenneTwister(1234), luxchain)
     return Off_Model(luxchain, ps, st, model.n_orbs1, model.n_orbs2, false)
 end
+
+reset_cutoff(model::Off_Model, r_cut::Float64, z_cut::Float64) = reset_cutoff(model, r_cut, r_cut, z_cut)
 
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
 On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); AA2BB=nothing) where{T} = 
@@ -212,6 +218,16 @@ On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::I
 # An offsite submodel - input is a (local) two-center environment, output is the corresponding offsite block of the density matrix
 Off_Model(maxdeg::Int64, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing) where {T} = 
                 Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maxdeg, rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
+
+Off_Model(maxdeg::Int64, ord::Int64, rcut1::Float64, rcut2::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing) where {T} = 
+                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maxdeg, rcut1, rcut2, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
+
+# The above rcut1 and rcut2 could have different meaning
+# in the different choices of offsite environment, in the 
+# cylinder case, they mean the cutoff of the the cutoff 
+# of the bond direction and radial direction (that is 
+# perpendicular to the bond). In the "two-sphereres" case, 
+# they are radial cutoffs of the two spheres.
 
 # adhoc code transforming an output of on or off model to a sub density matrix
 function sub_densitymatrix(x::NTuple{Len,Vector},L1::Int64,L2::Int64,n_orbs1::Union{Vector{Int64},SVector{L3,Int64}},n_orbs2::Union{Vector{Int64},SVector{L4,Int64}};sym = false) where {Len, L3, L4}

@@ -322,6 +322,7 @@ function svd_retraction(D::Matrix, n_pairs::Int)
 end
 
 function eigen_retraction(D::Matrix, n_pairs::Int)
+    @assert D ≈ D'
     s, q = eigen(D; sortby=x->-x)
     s[1:n_pairs] .= 1.0
     s[n_pairs+1:end] .= 0.0

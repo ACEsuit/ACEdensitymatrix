@@ -4,8 +4,23 @@ import ACEbase: write_dict, read_dict
 write_dict(l::Sample_Onsite_Radial) = Dict("__id__"=>"Sample_Onsite_Radial", "maxdeg" => l.maxdeg, "rcut" => l.rcut, "pin" => l.pin, "pout" => l.pout, "r0" => l.r0, "p" => l.p)
 read_dict(::Val{:Sample_Onsite_Radial}, dict::Dict) = Sample_Onsite_Radial(dict["maxdeg"], dict["rcut"], dict["pin"], dict["pout"], dict["r0"], dict["p"])
 
-write_dict(l::Sample_Offsite_Radial) = Dict("__id__"=>"Sample_Offsite_Radial", "maxdeg" => l.maxdeg, "rcut" => l.rcut, "zcut" => l.zcut, "pin" => l.pin, "pout" => l.pout, "r0" => l.r0, "p" => l.p)
-read_dict(::Val{:Sample_Offsite_Radial}, dict::Dict) = Sample_Offsite_Radial(dict["maxdeg"], dict["rcut"], dict["zcut"], dict["pin"], dict["pout"], dict["r0"], dict["p"])
+write_dict(l::Sample_Offsite_Radial) = begin 
+    try 
+        Dict("__id__"=>"Sample_Offsite_Radial", "maxdeg" => l.maxdeg, "rcut1" => l.rcut1, "rcut2" => l.rcut2, "zcut" => l.zcut, "pin" => l.pin, "pout" => l.pout, "r0" => l.r0, "p" => l.p)
+    catch
+        Dict("__id__"=>"Sample_Offsite_Radial", "maxdeg" => l.maxdeg, "rcut" => l.rcut, "zcut" => l.zcut, "pin" => l.pin, "pout" => l.pout, "r0" => l.r0, "p" => l.p)
+        # This line is added to make it compatible with the old version of the model
+    end
+end
+
+read_dict(::Val{:Sample_Offsite_Radial}, dict::Dict) = begin
+    try 
+        Sample_Offsite_Radial(dict["maxdeg"], dict["rcut1"], dict["rcut2"], dict["zcut"], dict["pin"], dict["pout"], dict["r0"], dict["p"])
+    catch 
+        Sample_Offsite_Radial(dict["maxdeg"], dict["rcut"], dict["rcut"], dict["zcut"], dict["pin"], dict["pout"], dict["r0"], dict["p"]) 
+        # This line is added to make it compatible with the old version of the model
+    end
+end
 
 write_dict(m::On_Model{L}) where L = Dict("__id__"=>"On_Model", 
                 "maxdeg" => m.model.layers.embed.layers.Rn.maxdeg,
