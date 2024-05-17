@@ -8,7 +8,8 @@ include("../src/io.jl")
 include("../src/tuned_models.jl")
 
 Ndata = 2000
-rcut = 10.0
+rcut_on = 10.0
+rcut_off = 10.0
 zcut = 10.0
 
 
@@ -16,7 +17,7 @@ zcut = 10.0
 routine = "data/new_datasets"
 filenames = ["$routine/propanol.h5"]# , "$routine/hexanol.h5", "$routine/acrolein.h5", "$routine/phenol.h5", "$routine/toluene.h5", "$routine/acetaldehyde.h5", "$routine/aniline.h5", "$routine/nmacetamide.h5"]
 frames = []
-train_set = Int.(0:floor(10000/Ndata):9999)
+train_set = 0:2999 # we take the first 2999 frames, as suggested in our test on the effect of number of data
 for fname in filenames
     molecule = TrajectoryHDF5(fname)
     push!(frames,[ read_frame(molecule,Int(i)) for i in train_set ]...) # constructing a training data set with Ndata frames for a single .h5 file
@@ -24,7 +25,7 @@ end
 frames = identity.(frames)
 
 frames_test = []
-test_set = rand(setdiff(0:9999, train_set), Ndata)
+test_set = 3000:9999 # rand(setdiff(0:9999, train_set), Ndata)
 for fname in filenames
     molecule = TrajectoryHDF5(fname)
     push!(frames_test,[ read_frame(molecule,Int(i)) for i in test_set ]...) # constructing a test data set with Ndata frames for a single .h5 file
@@ -33,7 +34,11 @@ frames_test = identity.(frames_test)
 
 # construct Models
 
-degreeset = 2:4
+# Here we generate the models with different orders and degrees
+# to generate one specific model, just fixed these values and get 
+# rid of the below loop.
+
+degreeset = 2:6
 ordset = 1:2
 # RE_train = zeros(length(ordset), length(degreeset))
 RMSE_train = zeros(length(ordset), length(degreeset))
@@ -63,10 +68,10 @@ for (j, order) in enumerate(ordset)
             println("Start construction ...")
             println()
 
-            ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order+1, "rcut" => rcut, "zcut" => zcut), 
-                            6 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
-                            # 7 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
-                            8 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut) )
+            ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order+1, "rcut_on" => rcut_on, "rcut_off" => rcut_off, "zcut" => zcut), 
+                            6 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut_on" => rcut_on, "rcut_off" => rcut_off, "zcut" => zcut),
+                            # 7 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut_on" => rcut_on, "rcut_off" => rcut_off, "zcut" => zcut),
+                            8 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut_on" => rcut_on, "rcut_off" => rcut_off, "zcut" => zcut) )
         
             global DM = Density_Model_tuned(ao_dict::Dict) # a density matrix model corresponding to the atomic orbital dictionary
 
