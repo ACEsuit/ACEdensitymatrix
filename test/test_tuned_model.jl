@@ -59,7 +59,11 @@ for (j, order) in enumerate(ordset)
         refit = false
 
         try 
-            global DM = load("test/CHO_Models/tuned/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld")|> read_dict
+            if rcut_on == rcut_off
+                global DM = load("test/CHO_Models/tuned/model_maxdeg$(degree)_ord$(order)_rcut$(rcut_on)_zcut$(zcut).jld")|> read_dict
+            else
+                global DM = load("test/CHO_Models/tuned/model_maxdeg$(degree)_ord$(order)_rcuton$(rcut_on)_$(rcut_off)_zcut$(zcut).jld")|> read_dict
+            end
         
             println("Model loaded!")
             println()
@@ -138,12 +142,14 @@ for (j, order) in enumerate(ordset)
             println("Saving the model ...")
             println()
 
-            if haskey(DM.Models, 7)
-                save("test/CHON_Models/tuned/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
-            else
-                save("test/CHO_Models/tuned/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld", write_dict(DM))
-            end
+            Folder = haskey(DM.Models, 7) ? "CHON_Models" : "CHO_Models"
 
+            if rcut_on == rcut_off
+                save("test/$Folder/tuned/model_maxdeg$(degree)_ord$(order)_rcut$(rcut_on)_zcut$(zcut).jld", write_dict(DM))
+            else
+                save("test/$Folder/tuned/model_maxdeg$(degree)_ord$(order)_rcuton$(rcut_on)_$(rcut_off)_zcut$(zcut).jld", write_dict(DM))
+            end
+            
             println("Model saved!")
             println()
         end
@@ -170,7 +176,7 @@ for i in 2:size(RMSE_train,1)
     plot!(degreeset, log10.(RMSE_test_retract[i,:]), label = "Order $(ordset[i]): Test RMSE (retracted)", linestyle = :dash, color = i, marker = :diamond)
 end
 title!("RMSE vs Degree")
-savefig("test/$Folder/tuned/RMSE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
+rcut_on == rcut_off ? savefig("test/$Folder/tuned/RMSE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut_on)_zcut$(zcut).png") : savefig("test/$Folder/tuned/RMSE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut_on)_$(rcut_off)_zcut$(zcut).png")
 
 # plt = plot(degreeset, log10.(RE_train[1,:]), label = "Order $(ordset[1]): Training Relative Error", xlabel = "Degree", ylabel = "RE (10^y)")
 # plot!(degreeset, log10.(RE_test[1,:]), label = "Order $(ordset[1]): Test Relative Error", linestyle = :dash)
@@ -179,7 +185,7 @@ savefig("test/$Folder/tuned/RMSE_Order$(minimum(ordset))-$(maximum(ordset))_rcut
 #     plot!(degreeset, log10.(RE_test[i,:]), label = "Order $(ordset[i]): Test Relative Error", linestyle = :dash)
 # end
 # title!("RE vs Degree")
-# savefig("test/$Folder/RE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
+# rcut_on == rcut_off ? savefig("test/$Folder/tuned/RE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut_on)_zcut$(zcut).png") : savefig("test/$Folder/tuned/RE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut_on)_$(rcut_off)_zcut$(zcut).png")
 
 plt = plot(degreeset, MV_train[1,:], label = "Order $(ordset[1]): Training Manifold Violation", xlabel = "Degree", ylabel = "||D_{pred}^2-D_{pred}||", legendfontsize=7, color = 1, legend = :topright)
 plot!(degreeset, MV_test[1,:], label = "Order $(ordset[1]): Test Manifold Violation", linestyle = :dash, color = 1)
@@ -192,6 +198,6 @@ for i in 2:size(MV_train,1)
     plot!(degreeset, MV_test_retract[i,:], label = "Order $(ordset[i]): Test Manifold Violation (retracted)", linestyle = :dash, color = i, marker = :diamond)
 end
 title!("Manifold Violation vs Degree")
-savefig("test/$Folder/tuned/MV_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
+rcut_on == rcut_off ? savefig("test/$Folder/tuned/MV_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut_on)_zcut$(zcut).png") : savefig("test/$Folder/tuned/MV_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut_on)_$(rcut_off)_zcut$(zcut).png")
 
 # converging meaning that we need to go to higher correlation order
