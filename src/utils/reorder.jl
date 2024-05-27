@@ -25,7 +25,7 @@ end
 
 
 function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}, matrix::Matrix{Float64};
-        inverse=false, debug=false)
+        inverse=false, debug=false, bothsides=false)
 
     pos = typeof(ao_labels) == Vector{String} ? 1 : 2
 
@@ -74,6 +74,10 @@ function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}, matrix::
                     Um = Um'
                 end
                 rotated_matrix[l_range, :] = Um * rotated_matrix[l_range, :]
+
+                if bothsides
+                    rotated_matrix[:, l_range] = rotated_matrix[:, l_range] * Um'
+                end
             end
         end
 
@@ -91,6 +95,10 @@ function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}, matrix::
             Ul = Ul'
         end
         rotated_matrix[atom_range, :] = Ul * rotated_matrix[atom_range, :]
+
+        if bothsides
+            rotated_matrix[:, atom_range] = rotated_matrix[:, atom_range] * Ul'
+        end
     end
 
     # print the reordered labels for debug
@@ -102,6 +110,7 @@ function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}, matrix::
 
     return rotated_matrix
 end
+
 
 function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}})
 
@@ -160,3 +169,5 @@ function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}})
 
     return ao_labels[ref_order]
 end
+
+
