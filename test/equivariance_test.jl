@@ -71,7 +71,7 @@ end
 # the EQM basis should have the same equivariance as the data above
 # onsite
 maxdeg = 4
-ord = 2
+ord = 1
 rcut = 10.0
 Zi = 6
 Zs = [6,1,8]
@@ -85,8 +85,8 @@ frame = read_frame(molecule,9999)
 Cord1 = frame["Coordinates"][:,:,1]
 Cord2 = frame["Coordinates"][:,:,2]
 Spec = Int.(frame["Atomic numbers"][:,1])
-R1 = [State(rr = SVector{3}(Cord1[:,J] - Cord1[:,1]), Zi = Spec[1], Zj = Spec[J]) for J in setdiff(1:size(Cord1,2), [1])]
-R2 = [State(rr = SVector{3}(Cord2[:,J] - Cord2[:,1]), Zi = Spec[1], Zj = Spec[J]) for J in setdiff(1:size(Cord1,2), [1])]
+R1 = [PState(rr = SVector{3}(Cord1[:,J] - Cord1[:,1]), Zi = Spec[1], Zj = Spec[J]) for J in setdiff(1:size(Cord1,2), [1])]
+R2 = [PState(rr = SVector{3}(Cord2[:,J] - Cord2[:,1]), Zi = Spec[1], Zj = Spec[J]) for J in setdiff(1:size(Cord1,2), [1])]
 
 D_CC = eval_model(md, R1)
 D_CC2 = eval_model(md, R2)
@@ -129,10 +129,10 @@ frame = read_frame(molecule,9999)
 Cord1 = frame["Coordinates"][:,:,1]
 Cord2 = frame["Coordinates"][:,:,2]
 Spec = Int.(frame["Atomic numbers"][:,1])
-R1 = [State(rr = SVector{3}(Cord1[:,J] - Cord1[:,1]), rr0 = SVector{3}(Cord1[:,5] - Cord1[:,1]), Zi = Spec[1], Zj = Spec[5], Zk = Spec[J], bond = false) for J in setdiff(1:size(Cord1,2), [1, 5])]
-push!(R1, State(rr = SVector{3}(Cord1[:,5] - Cord1[:,1]), rr0 = SVector{3}(Cord1[:,5] - Cord1[:,1]), Zi = Spec[1], Zj = Spec[1], Zk = Spec[5], bond = true))
-R2 = [State(rr = SVector{3}(Cord2[:,J] - Cord2[:,1]), rr0 = SVector{3}(Cord2[:,5] - Cord2[:,1]), Zi = Spec[1], Zj = Spec[5], Zk = Spec[J], bond = false) for J in setdiff(1:size(Cord1,2), [1, 5])]
-push!(R2, State(rr = SVector{3}(Cord2[:,5] - Cord2[:,1]), rr0 = SVector{3}(Cord2[:,5] - Cord2[:,1]), Zi = Spec[1], Zj = Spec[1], Zk = Spec[5], bond = true))
+R1 = [PState(rr = SVector{3}(Cord1[:,J] - Cord1[:,1]), rr0 = SVector{3}(Cord1[:,5] - Cord1[:,1]), Zi = Spec[1], Zj = Spec[5], Zk = Spec[J], bond = false) for J in setdiff(1:size(Cord1,2), [1, 5])]
+push!(R1, PState(rr = SVector{3}(Cord1[:,5] - Cord1[:,1]), rr0 = SVector{3}(Cord1[:,5] - Cord1[:,1]), Zi = Spec[1], Zj = Spec[1], Zk = Spec[5], bond = true))
+R2 = [PState(rr = SVector{3}(Cord2[:,J] - Cord2[:,1]), rr0 = SVector{3}(Cord2[:,5] - Cord2[:,1]), Zi = Spec[1], Zj = Spec[5], Zk = Spec[J], bond = false) for J in setdiff(1:size(Cord1,2), [1, 5])]
+push!(R2, PState(rr = SVector{3}(Cord2[:,5] - Cord2[:,1]), rr0 = SVector{3}(Cord2[:,5] - Cord2[:,1]), Zi = Spec[1], Zj = Spec[1], Zk = Spec[5], bond = true))
 
 D_CC = eval_model(md, R1)
 D_CC2 = eval_model(md, R2)

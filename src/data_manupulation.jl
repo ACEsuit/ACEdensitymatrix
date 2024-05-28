@@ -8,7 +8,7 @@ function translate_frame(frame::Dict{String,Array})
     Zs = Int64.(frame["Atomic numbers"]) 
     Rs = [ frame["Coordinates"][:,i] for i in 1:size(frame["Coordinates"],2) ]
     @assert length(Zs) == length(Rs)
-    R = [State(rr = Rs[j], Z = Zs[j]) for j in 1:length(Zs)]
+    R = [PState(rr = Rs[j], Z = Zs[j]) for j in 1:length(Zs)]
 
     C = copy(frame["Coefficients"]')
     S = frame["Overlap"]
@@ -25,13 +25,13 @@ function get_state(R,I,J;α=.5)
     if I == J
         # Onsite local environment
         @assert I <= length(R)
-        return [State(rr = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z) for J in setdiff(1:length(R), [I])]
+        return [PState(rr = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z) for J in setdiff(1:length(R), [I])]
     else
         # Offsite local environment - we have several options and here comes just one of them that centers the environment at atom I
         # TODO: Implement the other options
         @assert I <= length(R) && J <= length(R)
-        RIJ = [State(rr = SVector{3}(R[K].rr - α*R[I].rr - (1-α)*R[J].rr), rr0 = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z, Zk = R[K].Z, bond = false) for K in setdiff(1:length(R), [I,J])]
-        push!(RIJ, State(rr = SVector{3}(R[J].rr - R[I].rr), rr0 = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z, Zk = R[J].Z, bond = true))
+        RIJ = [PState(rr = SVector{3}(R[K].rr - α*R[I].rr - (1-α)*R[J].rr), rr0 = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z, Zk = R[K].Z, bond = false) for K in setdiff(1:length(R), [I,J])]
+        push!(RIJ, PState(rr = SVector{3}(R[J].rr - R[I].rr), rr0 = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z, Zk = R[J].Z, bond = true))
     end
 end
 

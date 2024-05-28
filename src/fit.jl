@@ -12,7 +12,7 @@ Dict_Int2Orbs = Dict(0 => "S", 1 => "P", 2 => "D", 3 => "F")
 Dict_Spec2Int = Dict("H" => 1, "C" => 6, "N" => 7, "O" => 8)
 Dict_Orbs2Int = Dict("S" => 0, "P" => 1, "D" => 2, "F" => 3)
 
-function fit!(model::AbstractModel, Rs::Union{Vector{State{T}},Vector{Vector{State{T}}}}, Ys::Vector{Matrix{TY}}; solver = ACEfit.SKLEARN_BRR()) where {T, TY}
+function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Matrix{TY}}; solver = ACEfit.SKLEARN_BRR()) where {T, TY}
     TP = typeof(model)
     LLset = [(l1,l2) for l2 in 0:get_L(model)[2], l1 in 0:get_L(model)[1]]
     n_orbs1, n_orbs2 = get_norbs(model)

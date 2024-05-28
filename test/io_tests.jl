@@ -1,4 +1,4 @@
-using JLD
+using JLD2, FileIO
 
 include("../src/data_manupulation.jl")
 include("../src/model_construction.jl")

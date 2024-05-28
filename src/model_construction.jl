@@ -48,7 +48,7 @@ get_L(model::On_Model{L}) where L = (L-1,L-1)
 get_L(model::Off_Model{L1,L2}) where {L1, L2} = (L1-1,L2-1)
 get_norbs(model::On_Model) = (model.n_orbs,model.n_orbs)
 get_norbs(model::Off_Model) = (model.n_orbs1,model.n_orbs2)
-eval_model(model::AbstractModel, x::Union{State{T}, Vector{State{T}}}) where {T} = sub_densitymatrix(model.model(x, model.ps, model.st)[1], get_L(model)..., get_norbs(model)...)
+eval_model(model::AbstractModel, x::Union{PState{T}, Vector{PState{T}}}) where {T} = sub_densitymatrix(model.model(x, model.ps, model.st)[1], get_L(model)..., get_norbs(model)...)
 
 # NOTE: Here we assume that the same type of atoms are discretized in the same way
 # Input: `ao_dict`` contains a list of atomic numbers and the number of orbitals for each atom
@@ -125,7 +125,7 @@ function Density_Model(ao_dict::Dict{TP, Dict{String, Any}}) where TP # There is
     return Density_Model{TP}(dict)
 end
 
-function eval_model(model::Density_Model, R::Union{State{T}, Vector{State{T}}}, ao_labels::Union{Vector{String},Matrix{String}}; retraction::Function=identity) where {T}
+function eval_model(model::Density_Model, R::Union{PState{T}, Vector{PState{T}}}, ao_labels::Union{Vector{String},Matrix{String}}; retraction::Function=identity) where {T}
     # R is a global configuration - a State or a vector of State objects
     # ao_labels is the labels of atoms and the corresponding basis sets
     # the output is the density matrix, ordering as the ao_labels
