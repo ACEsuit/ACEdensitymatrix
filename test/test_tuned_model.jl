@@ -1,4 +1,4 @@
-using Statistics, JLD
+using Statistics, JLD2, FileIO
 # using  PythonCall # PythonCall is used only when we need to call SKLearn
 
 include("../src/data_manupulation.jl")
@@ -60,9 +60,9 @@ for (j, order) in enumerate(ordset)
 
         try 
             if rcut_on == rcut_off
-                global DM = load("test/CHO_Models/tuned/model_maxdeg$(degree)_ord$(order)_rcut$(rcut_on)_zcut$(zcut).jld")|> read_dict
+                global DM = load("test/CHO_Models/tuned/model_maxdeg$(degree)_ord$(order)_rcut$(rcut_on)_zcut$(zcut).jld2")|> read_dict
             else
-                global DM = load("test/CHO_Models/tuned/model_maxdeg$(degree)_ord$(order)_rcuton$(rcut_on)_$(rcut_off)_zcut$(zcut).jld")|> read_dict
+                global DM = load("test/CHO_Models/tuned/model_maxdeg$(degree)_ord$(order)_rcuton$(rcut_on)_$(rcut_off)_zcut$(zcut).jld2")|> read_dict
             end
         
             println("Model loaded!")
@@ -145,9 +145,9 @@ for (j, order) in enumerate(ordset)
             Folder = haskey(DM.Models, 7) ? "CHON_Models" : "CHO_Models"
 
             if rcut_on == rcut_off
-                save("test/$Folder/tuned/model_maxdeg$(degree)_ord$(order)_rcut$(rcut_on)_zcut$(zcut).jld", write_dict(DM))
+                save("test/$Folder/tuned/model_maxdeg$(degree)_ord$(order)_rcut$(rcut_on)_zcut$(zcut).jld2", write_dict(DM))
             else
-                save("test/$Folder/tuned/model_maxdeg$(degree)_ord$(order)_rcuton$(rcut_on)_$(rcut_off)_zcut$(zcut).jld", write_dict(DM))
+                save("test/$Folder/tuned/model_maxdeg$(degree)_ord$(order)_rcuton$(rcut_on)_$(rcut_off)_zcut$(zcut).jld2", write_dict(DM))
             end
             
             println("Model saved!")
