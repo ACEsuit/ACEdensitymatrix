@@ -28,11 +28,11 @@ offsite_model2 = DM2.Models[Zi, Zj]
 
 # construct random configurations
 
-Ron = [State(rr = SVector{3}(rand(3)), Zi = Zi, Zj = rand(keys(ao_dict_1))) for i = 1:10]
+Ron = [PState(rr = SVector{3}(rand(3)), Zi = Zi, Zj = rand(keys(ao_dict_1))) for i = 1:10]
 Roff = begin 
     rr0 = SVector{3}(rand(3))
-    Roff = [State(rr = SVector{3}(rand(3)), rr0 = rr0, Zi = Zi, Zj = Zj, Zk = rand(keys(ao_dict_1)), bond = false) for i = 1:10]
-    push!(Roff, State(rr = rr0, rr0 = rr0, Zi = Zi, Zj = Zj, Zk = Zj, bond = true))
+    Roff = [PState(rr = SVector{3}(rand(3)), rr0 = rr0, Zi = Zi, Zj = Zj, Zk = rand(keys(ao_dict_1)), bond = false) for i = 1:10]
+    push!(Roff, PState(rr = rr0, rr0 = rr0, Zi = Zi, Zj = Zj, Zk = Zj, bond = true))
 end
 
 # test for IO - onsite radial basis 
@@ -90,14 +90,14 @@ dm = read_dict(d2)
 @show eval_model(dm, R, ao_labels) == eval_model(DM2, R, ao_labels)
 
 # test for IO - save and load to a local file
-save("test/model.jld", d)
-dm = load("test/model.jld") |> read_dict
+save("test/model.jld2", d)
+dm = load("test/model.jld2") |> read_dict
 @time eval_model(dm, R, ao_labels);
 @time eval_model(DM1, R, ao_labels);
 @show eval_model(dm, R, ao_labels) == eval_model(DM1, R, ao_labels)
 
-save("test/model.jld", d2)
-dm = load("test/model.jld") |> read_dict
+save("test/model.jld2", d2)
+dm = load("test/model.jld2") |> read_dict
 @time eval_model(dm, R, ao_labels);
 @time eval_model(DM2, R, ao_labels);
 @show eval_model(dm, R, ao_labels) == eval_model(DM2, R, ao_labels)

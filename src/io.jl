@@ -28,11 +28,22 @@ write_dict(m::On_Model{L}) where L = Dict("__id__"=>"On_Model",
                 "cutoff" => write_dict(m.model.layers.embed.layers.Rn),
                 "categories" => m.model.layers.embed.layers.δs.layers.categorical.basis.categories.list,
                 "parameters" => [ m.ps.dot[i].W for i =1:length(m.ps.dot)], 
+                "Aspec" => m.model.layers.A.basis.spec,
+                "AAspec" => process_AAspec(m.model.layers.AA.basis.specs),
                 "AA2BBmap" => [ m.model.layers.AA2BB.layers[i].op for i = 1:length(m.model.layers.AA2BB.layers)],
                 "AA2BBpos" => [ m.model.layers.AA2BB.layers[i].pos for i = 1:length(m.model.layers.AA2BB.layers)],
                 "n_orbs" => m.n_orbs,
                 "L" => L-1, 
                 "fitted" => m.fitted)
+
+function process_AAspec(sp)
+    # tmp = Vector{Tuple{Int64, Vararg{Int64}}}([sp[1]... ])
+    tmp = Vector{Any}([sp[1]... ])
+    for i = 2:length(sp)
+        push!(tmp, sp[i]...)
+    end
+    return tmp
+end
 
 function read_dict(::Val{:On_Model}, dict::Dict)
 
@@ -45,7 +56,47 @@ function read_dict(::Val{:On_Model}, dict::Dict)
     n_orbs = identity.(dict["n_orbs"])
     categories = identity.(dict["categories"])
 
-    luxchain, ps, st = equivariant_operator(dict["maxdeg"], dict["ord"], radial, L, L, Vector(n_orbs), Vector(n_orbs); categories = categories, _get_cat = _get_cat_default, cat_extension = simple_extension, AA2BB = Dict("AA2BBmap" => dict["AA2BBmap"], "AA2BBpos" => dict["AA2BBpos"]))
+    if haskey(dict, "Aspec") && haskey(dict, "AAspec")
+        Ylm = CYlmBasis(dict["maxdeg"])
+        categories = dict["categories"]
+        δs = CategoricalBasis(categories)
+        l_δs = Polynomials4ML.lux(δs)
+        l_δs = append_layer(Chain(get_cat = WrappedFunction(_get_cat_default), ), l_δs; l_name = :categorical)
+        l_Rnl = radial.Rnl
+        l_Ylm = Polynomials4ML.lux(Ylm)
+        l_Ylm = append_layer(Chain(get_pos = WrappedFunction(x -> [ x[i].rr for i = 1:length(x)]), ), l_Ylm; l_name = :angle_poly)
+
+        l_embed = Lux.Parallel(nothing; Rn = l_Rnl, Ylm = l_Ylm, δs = l_δs)
+
+        # new things that I need - A_spec and AA_spec
+        bA = Polynomials4ML.PooledSparseProduct(dict["Aspec"])
+        l_bA = Polynomials4ML.lux(bA)
+        bAA = Polynomials4ML.SparseSymmProd(Vector{Tuple{Int64, Vararg{Int64}}}(dict["AAspec"]))
+        l_bAA = Polynomials4ML.lux(bAA)
+
+        luxchain = Chain(embed = l_embed, A = l_bA , AA = l_bAA)
+
+        # C - A2Bmap
+        C = dict["AA2BBmap"]
+        pos = dict["AA2BBpos"]
+        LLset = [(l1,l2) for l1 = 0:dict["L"] for l2 = 0:dict["L"]]
+        l_sym = Lux.Parallel(nothing, [ConstLinearLayer_loc(identity(C[i]),identity(pos[i])) for i in 1:length(LLset)]... )
+        luxchain = append_layer(luxchain, l_sym; l_name = :AA2BB)
+
+        l_real = WrappedFunction(cc -> Tuple([identity.(real.(cc[i])) for i = 1:length(cc) ]))
+        luxchain = append_layer(luxchain, l_real; l_name = :stablize)
+
+        ext_n_orbs = extend_n_orbs(dict["n_orbs"], dict["n_orbs"], LLset)
+
+        len = [size(luxchain.layers.AA2BB.layers[i].op,1) for i = 1:(dict["L"]+1)*(dict["L"]+1)]
+    
+        Linear_layer = Lux.Parallel(nothing, [LinearLayer_loc(len[i], ext_n_orbs[i]) for i = 1:(dict["L"]+1)*(dict["L"]+1)]... )
+        luxchain = append_layer(luxchain, Linear_layer; l_name = :dot)
+
+        ps, st = Lux.setup(MersenneTwister(1234), luxchain)
+    else
+        luxchain, ps, st = equivariant_operator(dict["maxdeg"], dict["ord"], radial, L, L, Vector(n_orbs), Vector(n_orbs); categories = categories, _get_cat = _get_cat_default, cat_extension = simple_extension, AA2BB = Dict("AA2BBmap" => dict["AA2BBmap"], "AA2BBpos" => dict["AA2BBpos"]))
+    end
 
     ps, st = Lux.setup(MersenneTwister(1234), luxchain)
 
@@ -67,6 +118,8 @@ write_dict(m::Off_Model{L1,L2}) where {L1,L2} = Dict("__id__"=>"Off_Model",
                 "cutoff" => write_dict(m.model.layers.embed.layers.Rn),
                 "categories" => m.model.layers.embed.layers.δs.layers.categorical.basis.categories.list,
                 "parameters" => [ m.ps.dot[i].W for i =1:length(m.ps.dot)], 
+                "Aspec" => m.model.layers.A.basis.spec,
+                "AAspec" => process_AAspec(m.model.layers.AA.basis.specs),
                 "AA2BBmap" => [ m.model.layers.AA2BB.layers[i].op for i = 1:length(m.model.layers.AA2BB.layers)],
                 "AA2BBpos" => [ m.model.layers.AA2BB.layers[i].pos for i = 1:length(m.model.layers.AA2BB.layers)],
                 "n_orbs1" => m.n_orbs1,
@@ -86,7 +139,47 @@ function read_dict(::Val{:Off_Model}, dict::Dict)
     n_orbs1, n_orbs2 = dict["n_orbs1"], dict["n_orbs2"]
     categories = identity.(dict["categories"])
 
-    luxchain, ps, st = equivariant_operator(dict["maxdeg"], dict["ord"], radial, L1, L2, Vector(n_orbs1), Vector(n_orbs2); categories = categories, _get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = Dict("AA2BBmap" => dict["AA2BBmap"], "AA2BBpos" => dict["AA2BBpos"]))
+    if haskey(dict, "Aspec") && haskey(dict, "AAspec")
+        Ylm = CYlmBasis(dict["maxdeg"])
+        categories = dict["categories"]
+        δs = CategoricalBasis(categories)
+        l_δs = Polynomials4ML.lux(δs)
+        l_δs = append_layer(Chain(get_cat = WrappedFunction(_get_cat_offsite), ), l_δs; l_name = :categorical)
+        l_Rnl = radial.Rnl
+        l_Ylm = Polynomials4ML.lux(Ylm)
+        l_Ylm = append_layer(Chain(get_pos = WrappedFunction(x -> [ x[i].rr for i = 1:length(x)]), ), l_Ylm; l_name = :angle_poly)
+
+        l_embed = Lux.Parallel(nothing; Rn = l_Rnl, Ylm = l_Ylm, δs = l_δs)
+
+        # new things that I need - A_spec and AA_spec
+        bA = Polynomials4ML.PooledSparseProduct(dict["Aspec"])
+        l_bA = Polynomials4ML.lux(bA)
+        bAA = Polynomials4ML.SparseSymmProd(Vector{Tuple{Int64, Vararg{Int64}}}(dict["AAspec"]))
+        l_bAA = Polynomials4ML.lux(bAA)
+
+        luxchain = Chain(embed = l_embed, A = l_bA , AA = l_bAA)
+
+        # C - A2Bmap
+        C = dict["AA2BBmap"]
+        pos = dict["AA2BBpos"]
+        LLset = [(l1,l2) for l1 = 0:L1 for l2 = 0:L2]
+        l_sym = Lux.Parallel(nothing, [ConstLinearLayer_loc(identity(C[i]),identity(pos[i])) for i in 1:length(LLset)]... )
+        luxchain = append_layer(luxchain, l_sym; l_name = :AA2BB)
+
+        l_real = WrappedFunction(cc -> Tuple([identity.(real.(cc[i])) for i = 1:length(cc) ]))
+        luxchain = append_layer(luxchain, l_real; l_name = :stablize)
+
+        ext_n_orbs = extend_n_orbs(dict["n_orbs1"], dict["n_orbs2"], LLset)
+
+        len = [size(luxchain.layers.AA2BB.layers[i].op,1) for i = 1:(L1+1)*(L2+1)]
+    
+        Linear_layer = Lux.Parallel(nothing, [LinearLayer_loc(len[i], ext_n_orbs[i]) for i = 1:(L1+1)*(L2+1)]... )
+        luxchain = append_layer(luxchain, Linear_layer; l_name = :dot)
+
+        ps, st = Lux.setup(MersenneTwister(1234), luxchain)
+    else
+        luxchain, ps, st = equivariant_operator(dict["maxdeg"], dict["ord"], radial, L1, L2, Vector(n_orbs1), Vector(n_orbs2); categories = categories, _get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = Dict("AA2BBmap" => dict["AA2BBmap"], "AA2BBpos" => dict["AA2BBpos"]))
+    end
 
     # replace the parameters
     layer_set = ["layer_$i" for i in 1:length(dict["AA2BBmap"])]
