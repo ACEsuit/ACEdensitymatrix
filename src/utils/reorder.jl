@@ -48,6 +48,27 @@ function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}, matrix::
         atom_stop = maximum(atom_mask)
         atom_range = atom_start:atom_stop
 
+        if inverse
+            # build the unitary transformation for bringing the same values
+            # of l close
+            Ul = zeros(Float64, size(atom_range, 1), size(atom_range, 1))
+            atom_ls = ls[atom_range]
+            for (i, j) in enumerate(sortperm(atom_ls))
+                Ul[i, j] = 1.0
+            end
+
+            ref_order[atom_range] = Ul * ref_order[atom_range]
+
+            Ul = Ul'
+            
+            rotated_matrix[atom_range, :] = Ul * rotated_matrix[atom_range, :]
+
+            if bothsides
+                rotated_matrix[:, atom_range] = rotated_matrix[:, atom_range] * Ul'
+            end
+        end
+
+
         # build and apply the unitary transformation for ordering m by value
         for shell in 1:maximum(shells[atom_range])
             shell_mask = findall(x->x==shell, shells[atom_range])
@@ -81,23 +102,22 @@ function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}, matrix::
             end
         end
 
-        # build the unitary transformation for bringing the same values
-        # of l close
-        Ul = zeros(Float64, size(atom_range, 1), size(atom_range, 1))
-        atom_ls = ls[atom_range]
-        for (i, j) in enumerate(sortperm(atom_ls))
-            Ul[i, j] = 1.0
-        end
+        if !inverse
+            # build the unitary transformation for bringing the same values
+            # of l close
+            Ul = zeros(Float64, size(atom_range, 1), size(atom_range, 1))
+            atom_ls = ls[atom_range]
+            for (i, j) in enumerate(sortperm(atom_ls))
+                Ul[i, j] = 1.0
+            end
 
-        ref_order[atom_range] = Ul * ref_order[atom_range]
+            ref_order[atom_range] = Ul * ref_order[atom_range]
 
-        if inverse
-            Ul = Ul'
-        end
-        rotated_matrix[atom_range, :] = Ul * rotated_matrix[atom_range, :]
+            rotated_matrix[atom_range, :] = Ul * rotated_matrix[atom_range, :]
 
-        if bothsides
-            rotated_matrix[:, atom_range] = rotated_matrix[:, atom_range] * Ul'
+            if bothsides
+                rotated_matrix[:, atom_range] = rotated_matrix[:, atom_range] * Ul'
+            end
         end
     end
 
