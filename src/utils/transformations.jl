@@ -311,6 +311,8 @@ function __compute_Al(A::Rot3DCoeffs_loc{L1, L2, T}, ll, Mll, TP, TA) where {L1,
 end
 
 function svd_retraction(D::Matrix, n_pairs::Int)
+    @assert D ≈ D'
+    D = Symmetric(D)
     u, s, v = svd(D)
     s[1:n_pairs] .= 1.0
     s[n_pairs+1:end] .= 0.0
@@ -323,6 +325,7 @@ end
 
 function eigen_retraction(D::Matrix, n_pairs::Int)
     @assert D ≈ D'
+    D = Symmetric(D)
     s, q = eigen(D; sortby=x->-x)
     s[1:n_pairs] .= 1.0
     s[n_pairs+1:end] .= 0.0
