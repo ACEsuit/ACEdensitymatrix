@@ -18,7 +18,7 @@ function translate_frame(frame::Dict{String,Array})
     C = apply_reorder(frame["Basis set labels"], C; debug=false) # Reorder the basis set
     D = C * C' # Density matrix with correct ordering and on the manifold
 
-    H = copy(frame["Core Hamiltonian"])
+    H = copy(frame["Kohn-Sham matrix"])
     H = apply_reorder(frame["Basis set labels"], H; debug=false, bothsides = true) # Reorder the Hamiltonian
 
     S = copy(frame["Overlap"])
