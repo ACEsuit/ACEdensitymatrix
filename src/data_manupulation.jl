@@ -18,7 +18,13 @@ function translate_frame(frame::Dict{String,Array})
     C = apply_reorder(frame["Basis set labels"], C; debug=false) # Reorder the basis set
     D = C * C' # Density matrix with correct ordering and on the manifold
 
-    return Dict("R"=>R, "D"=>D, "ao_labels"=>frame["Basis set labels"], "atomic_numbers"=>Zs)
+    H = copy(frame["Core Hamiltonian"])
+    H = apply_reorder(frame["Basis set labels"], H; debug=false, bothsides = true) # Reorder the Hamiltonian
+
+    S = copy(frame["Overlap"])
+    S = apply_reorder(frame["Basis set labels"], S; debug=false, bothsides = true) # Reorder the Overlap matrix
+
+    return Dict("R"=>R, "D"=>D, "ao_labels"=>frame["Basis set labels"], "atomic_numbers"=>Zs, "H"=>H, "S"=>S, "C"=>C)
 end
 
 function get_state(R,I,J;α=.5)

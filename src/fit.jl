@@ -71,7 +71,7 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     # return model
 end
 
-function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union{T,Tuple{T,T}}}) where T
+function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union{T,Tuple{T,T}}}; Mode = "D") where T
     Rs = Dict(key => [] for key in keys)
     Ys = Dict(key => [] for key in keys)
     
@@ -81,14 +81,14 @@ function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union
             if !(typeof(key) <: Tuple)
                 for i in findall(x->x==key, f["atomic_numbers"])
                     push!(Rs[key], get_state(f["R"], i, i))
-                    push!(Ys[key], get_block(f["D"], i, i, f["ao_labels"]))
+                    push!(Ys[key], get_block(f[Mode], i, i, f["ao_labels"]))
                 end
             else
                 i, j = key
                 for ii in findall(x->x==i, f["atomic_numbers"])
                     for jj in setdiff(findall(x->x==j, f["atomic_numbers"]),ii)
                         push!(Rs[key], get_state(f["R"], ii, jj))
-                        push!(Ys[key], get_block(f["D"], ii, jj, f["ao_labels"]))
+                        push!(Ys[key], get_block(f[Mode], ii, jj, f["ao_labels"]))
                     end
                 end
             end
@@ -101,8 +101,8 @@ end
 # Fit a whole Density_Model
 # Here, frames can be non_franslated frame (directly read from data) which will be transfer to a readable format (i.e. translate_frame) in split_data function
 # The function should return a fitted Density_Model
-function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR())
-    Rs, Ys = split_data(frames, keys(model.Models))
+function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), Mode = "D")
+    Rs, Ys = split_data(frames, keys(model.Models); Mode = Mode)
     for key in keys(model.Models)
         typeof(key) <: Tuple ? println("=== Fitting for $(Dict_Int2Spec[key[1]])-$(Dict_Int2Spec[key[2]]) offsite model ===") : println("==== Fitting for $(Dict_Int2Spec[key]) onsite model ====")
         println()

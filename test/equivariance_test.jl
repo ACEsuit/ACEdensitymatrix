@@ -28,6 +28,12 @@ C2 = sqrt_overlap2 * C_tilde2
 C2 = apply_reorder(frame["Basis set labels"], C2; debug=false)
 D2 = C2 * C2'
 
+H = frame["Core Hamiltonian"][:,:,1]
+H2 = frame["Core Hamiltonian"][:,:,2]
+
+D = apply_reorder(frame["Basis set labels"], H; debug=false, bothsides = true)
+D2 = apply_reorder(frame["Basis set labels"], H2; debug=false, bothsides = true)
+
 ## Validate equivariance of the data
 det(Q)  # rotation + reversion 
         # ==> -Q is a standard rotation that we should have sent to the wigner_D function. 
