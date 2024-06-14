@@ -13,9 +13,9 @@ zcut = 10.0
 
 # read data
 routine = "data/new_datasets"
-filenames = ["$routine/propanol_KS.h5"]#, "$routine/hexanol.h5", "$routine/acrolein.h5", "$routine/phenol.h5", "$routine/toluene.h5", "$routine/acetaldehyde.h5", "$routine/aniline.h5", "$routine/nmacetamide.h5"]
+filenames = ["$routine/hexanol_KS.h5"]#, "$routine/acrolein.h5", "$routine/phenol.h5", "$routine/toluene.h5", "$routine/acetaldehyde.h5", "$routine/aniline.h5", "$routine/nmacetamide.h5"]
 frames = []
-train_set = 0:30:Ndata-1 # Int.(0:floor(10000/Ndata):9999)
+train_set = 0:1:Ndata-1 # Int.(0:floor(10000/Ndata):9999)
 for fname in filenames
     molecule = TrajectoryHDF5(fname)
     push!(frames,[ read_frame(molecule,Int(i)) for i in train_set ]...) # constructing a training data set with Ndata frames for a single .h5 file
@@ -33,7 +33,7 @@ frames_test = identity.(frames_test)
 # construct Models
 
 degreeset = 2:10
-ordset = 2:3
+ordset = 1:2
 # RE_train = zeros(length(ordset), length(degreeset))
 RMSE_D_train = zeros(length(ordset), length(degreeset))
 RMSE_DfromH_train = zeros(length(ordset), length(degreeset))
@@ -57,12 +57,12 @@ for (j, order) in enumerate(ordset)
 
         # construct or load the Density Matrix model
         try 
-            global DM = load("test/CHO_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut)_new.jld2")|> read_dict
+            global DM = load("test/CHO_Models/Hexanol/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2")|> read_dict
         
             println("DM Model loaded!")
             println()
         catch
-            DM = load("test/CHO_Models/model_maxdeg2_ord1_rcut$(rcut)_zcut$(zcut)_new.jld2")|> read_dict
+            DM = load("test/CHO_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut)_new.jld2")|> read_dict
             # println("DM Model doesn't exist / fails to be loaded ...")
             # println("Start construction ...")
             # println()
@@ -77,35 +77,34 @@ for (j, order) in enumerate(ordset)
             # println("Model constructed!")
             # println()
 
-            # # fit the model, if it is not fully fitted yet
-            # if !isfitted(DM)
-            #     fit!(DM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I))
-            #     Folder = haskey(DM.Models, 7) ? "CHON_Models" : "CHO_Models"
-            #     save("test/$Folder/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut)_new.jld2", write_dict(DM))
-            # end
+            # fit the model, if it is not fully fitted yet
+            if !isfitted(DM)
+                fit!(DM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I))
+                Folder = haskey(DM.Models, 7) ? "CHON_Models" : "CHO_Models"
+                save("test/$Folder/Hexanol/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2", write_dict(DM))
+            end
             # refit_D = true
         end
 
         # construct or load the Hamiltonian model
         try 
-            global HM = load("test/CHO_Models/Hamiltonian/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2")|> read_dict
+            global HM = load("test/CHO_Models/Hamiltonian/Hexanol/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2")|> read_dict
         
             println("HM Model loaded!")
             println()
         catch
-            continue
-            # println("HM Model doesn't exist / fails to be loaded ...")
-            # println("Make use of the DM, but subject to refit...")
+            println("HM Model doesn't exist / fails to be loaded ...")
+            println("Make use of the DM, but subject to refit...")
                 
-            # global HM = load("test/CHO_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut)_new.jld2")|> read_dict
+            global HM = load("test/CHO_Models/Hexanol/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2")|> read_dict
                 
-            # println("Model copied!")
-            # println()
+            println("Model copied!")
+            println()
             
-            # # fit the model
-            # fit!(HM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I), Mode = "H")
-            # Folder = haskey(HM.Models, 7) ? "CHON_Models" : "CHO_Models"
-            # save("test/$Folder/Hamiltonian/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2", write_dict(HM))
+            # fit the model
+            fit!(HM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I), Mode = "H")
+            Folder = haskey(HM.Models, 7) ? "CHON_Models" : "CHO_Models"
+            save("test/$Folder/Hamiltonian/Hexanol/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2", write_dict(HM))
         end
 
         # validate the model - Training
@@ -184,10 +183,10 @@ for (j, order) in enumerate(ordset)
     end
 end
 
-RMSE_D_train[2,6:7] = [0 0]
-E_D_train[2,6:7] = [0 0]
-RMSE_D_test[2,6:7] = [0 0]
-E_D_test[2,6:7] = [0 0]
+RMSE_D_train[3,6:7] = [0 0]
+E_D_train[3,6:7] = [0 0]
+RMSE_D_test[3,6:7] = [0 0]
+E_D_test[3,6:7] = [0 0]
 
 DM_tuned = load("test/CHO_Models/tuned/model_maxdeg8_ord2_rcut$(rcut)_zcut$(zcut)_new.jld2")|> read_dict
 HM_tuned = load("test/CHO_Models/Hamiltonian/tuned/model_maxdeg8_ord2_rcut$(rcut)_zcut$(zcut).jld2")|> read_dict
@@ -299,6 +298,31 @@ ylims!(-4.0, -1.4)
 title!("RMSE in D and H vs Degree")
 savefig("test/$Folder/DH_RMSE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
 
+## Exploring the error in H
+plt = plot(degreeset, log10.(E_H_train[1,:]), label = "Order $(ordset[1]): Training Error in H", xlabel = "Degree", ylabel = "Error (10^y)", legendfontsize=7, color = 1)
+plot!(degreeset, log10.(E_H_test[1,:]), label = "Order $(ordset[1]): Test Error in H", linestyle = :dash, color = 1)
+for i in 2:size(E_H_train,1)
+    plot!(degreeset, log10.(E_H_train[i,:]), label = "Order $(ordset[i]): Training Error in H", color = i)
+    plot!(degreeset, log10.(E_H_test[i,:]), label = "Order $(ordset[i]): Test Error in H", linestyle = :dash, color = i)
+end
+title!("Error in H vs Degree")
+
+log10.(E_H_train)
+E_guess = [-0.0946, -1.6, -2.04993 - (1.6759 - 1.37707)]
+E_guess = [10^E_guess[1], 10^E_guess[2], 10^E_guess[3]]
+y = log.(E_guess)
+x = [1, 2, 3]
+x = [x'; ones(length(x))']'
+k = x \ y
+
+xx = 1:0.5:3
+yy = k[1].*xx .+ k[2]
+plot!(xx, yy)
+b = k[1]
+a = exp(k[2])
+
+plot(xx, a.*exp.(b*xx))
+plot!([1,2,3], E_guess, seriestype=:scatter)
 # plt = plot(degreeset, log10.(RE_train[1,:]), label = "Order $(ordset[1]): Training Relative Error", xlabel = "Degree", ylabel = "RE (10^y)")
 # plot!(degreeset, log10.(RE_test[1,:]), label = "Order $(ordset[1]): Test Relative Error", linestyle = :dash)
 # for i in 2:size(RE_train,1)
@@ -309,3 +333,57 @@ savefig("test/$Folder/DH_RMSE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(r
 # savefig("test/$Folder/RE_Order$(minimum(ordset))-$(maximum(ordset))_rcut$(rcut)_zcut$(zcut).png")
 
 # converging meaning that we need to go to higher correlation order
+
+## Let's track down the relationship between error in H and the resulting error in D
+E_DfromH_train_v = [ 0 < E_DfromH_train[i,j] < 1 ? E_DfromH_train[i,j] : 0 for i in 1:size(E_DfromH_train,1), j in 1:size(E_DfromH_train,2)]
+E_DfromH_test_v = [ 0 < E_DfromH_test[i,j] < 1 ? E_DfromH_test[i,j] : 0 for i in 1:size(E_DfromH_test,1), j in 1:size(E_DfromH_test,2)]
+E_H_train_v = [ 0 < E_H_train[i,j] < 1 ? E_H_train[i,j] : 0 for i in 1:size(E_H_train,1), j in 1:size(E_H_train,2)]
+E_H_test_v = [ 0 < E_H_test[i,j] < 1 ? E_H_test[i,j] : 0 for i in 1:size(E_H_test,1), j in 1:size(E_H_test,2)]
+
+E_DH = [zip(E_H_train[i,:], E_DfromH_train[i,:]) for i in 1:size(E_H_train,1)]
+
+
+plt = plot(log10.(E_H_train_v[1,:]), log10.(E_DfromH_train_v[1,:]), label = "Order $(ordset[1]): Training Error Propagation from H to D", xlabel = "Error on H (10^x)", ylabel = "Error on D (10^y)", legendfontsize=7, color = 1, seriestype=:scatter)
+plot!(log10.(E_H_test_v[1,:]), log10.(E_DfromH_test_v[1,:]), label = nothing, color = 1, seriestype=:scatter, marker = :diamond)
+for i = 2:size(E_H_test_v,1)
+    plot!(log10.(E_H_train_v[i,:]), log10.(E_DfromH_train_v[i,:]), label = "Order $(ordset[i]) Error Propagation from H to D", xlabel = "Error on H (10^x)", ylabel = "Error on D (10^y)", legendfontsize=7, color = i, seriestype=:scatter)
+    plot!(log10.(E_H_test_v[i,:]), log10.(E_DfromH_test_v[i,:]), label =nothing, color = i, seriestype=:scatter, marker = :diamond)
+end
+
+X = [log10.(E_H_train_v[1,:])..., log10.(E_H_test_v[1,:])...]
+Y = [log10.(E_DfromH_train_v[1,:])..., log10.(E_DfromH_test_v[1,:])...] .- (2/3) .* X
+Y = Y[findall(x -> x != -Inf, X)]
+X = X[findall(x -> x != -Inf, X)]
+# X = [X'; ones(length(X))']'
+XX = reshape(ones(length(X)), (length(X), 1))
+# X = reshape(X, (length(X), 1))
+# Y = Y[findall(x -> x != -Inf, Y)]
+
+k1 = XX'XX \ XX'Y
+plot!([-2, 0], 2/3*[-2, 0] .+ (k1[1]), label = "y = $(k1[1]) * x", color = 3, linestyle = :dash)
+# plot!([-1.6, -0.5], k[1]*[-1.6, -0.5], label = "y = $(k[1]) * x", color = 3, linestyle = :dash)
+
+X = [log10.(E_H_train_v[2,:])..., log10.(E_H_test_v[2,:])...]
+Y = [log10.(E_DfromH_train_v[2,:])..., log10.(E_DfromH_test_v[2,:])...] .- (2/3) .* X
+Y = Y[findall(x -> x != -Inf, X)]
+X = X[findall(x -> x != -Inf, X)]
+# X = [X'; ones(length(X))']'
+XX = reshape(ones(length(X)), (length(X), 1))
+# X = reshape(X, (length(X), 1))
+# Y = Y[findall(x -> x != -Inf, Y)]
+k2 = XX'XX \ XX'Y
+plot!([-2.2, 0], 2/3*[-2.2, 0] .+ (k2[1]), label = "y = $(k2[1]) * x", color = 4, linestyle = :dash)
+
+plt = plot(E_H_train[1,:], E_DfromH_train[1,:], label = "Order $(ordset[1]): Training Error Propagation from H to D", xlabel = "Error on H", ylabel = "Error on D", legendfontsize=7, color = 1, seriestype=:scatter)
+plot!(E_H_test[1,:], E_DfromH_test[1,:], label = nothing, color = 1, seriestype=:scatter, marker = :diamond)
+for i = 2:size(E_H_test_v,1)
+    plot!(E_H_train[i,:], E_DfromH_train[i,:], label = "Order $(ordset[i]) Error Propagation from H to D", xlabel = "Error on H", ylabel = "Error on D", legendfontsize=7, color = i, seriestype=:scatter)
+    plot!(E_H_test[i,:], E_DfromH_test[i,:], label =nothing, color = i, seriestype=:scatter, marker = :diamond)
+end
+xlims!(0, .4)
+ylims!(0, .2)
+xx = 0:0.01:1
+yy = 10^k2[1] .* xx.^(2/3)
+plot!(xx, yy, label = "y = $(k2[1]) * x^(2/3)", color = 3, linestyle = :dash)
+
+title!("Error Propagation from H to D (Lienar relationship)")
