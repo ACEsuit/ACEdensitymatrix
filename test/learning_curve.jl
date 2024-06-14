@@ -63,6 +63,7 @@ for (j, order) in enumerate(ordset)
             println()
         catch
             DM = load("test/CHO_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut)_new.jld2")|> read_dict
+            println("DM Model reloaded and is to be fitted!")
             # println("DM Model doesn't exist / fails to be loaded ...")
             # println("Start construction ...")
             # println()
@@ -79,9 +80,11 @@ for (j, order) in enumerate(ordset)
 
             # fit the model, if it is not fully fitted yet
             if !isfitted(DM)
+                println("Start fitting ...")
                 fit!(DM, frames; solver = ACEfit.QR(lambda = 1e-12, P = I))
                 Folder = haskey(DM.Models, 7) ? "CHON_Models" : "CHO_Models"
                 save("test/$Folder/Hexanol/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2", write_dict(DM))
+                println("Model fitted and saved!")
             end
             # refit_D = true
         end
