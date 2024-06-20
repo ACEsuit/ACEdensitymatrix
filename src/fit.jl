@@ -38,8 +38,8 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
             A[(2l1+1)*(2l2+1)*(j-1)+1:(2l1+1)*(2l2+1)*j,:] = flat(valset[j][i])
         end
         # regularization should not be done in this way, which slows down the calculations (and also underestimate the RMSE!!)!
-        # num = size(A)[2] # number of basis
-        # A = [A; λ*Γ]
+        num = size(A)[2] # number of basis
+        A = [A; λ*Γ]
         
         for kk = 1 : size(model.ps.dot[i].W,1)
             ii, jj = k2ij(kk, n_orbs1[l1+1], n_orbs2[l2+1])
@@ -52,14 +52,14 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
             for k in 1:length(Ys)
                 Y[(k-1)*length(Yij[1])+1:k*length(Yij[1])] = Yij[k]
             end
-            # Y = [Y; zeros(num)]
+            Y = [Y; zeros(num)]
 
             # solve for C[kk]
             C = ACEfit.solve(solver, A, Y)["C"];
             @set! model.ps.dot.$(layer_set[i]).W[kk,:] = C
             # list of potential solvers: ACEfit: QR, LSQR, RRQR, SKLEARN_BRR, SKLEARN_ARD, BLR, TruncatedSVD...
             
-            RMSE += norm(A*C - Y)^2/length(Y)
+            RMSE += norm((A*C-Y)[1:end-num])^2/(length(Y)-num)
         end
         println("RMSE = $(sqrt(RMSE/length(LLset)))")
         println()
