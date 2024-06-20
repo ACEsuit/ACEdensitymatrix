@@ -12,7 +12,7 @@ Dict_Int2Orbs = Dict(0 => "S", 1 => "P", 2 => "D", 3 => "F")
 Dict_Spec2Int = Dict("H" => 1, "C" => 6, "N" => 7, "O" => 8)
 Dict_Orbs2Int = Dict("S" => 0, "P" => 1, "D" => 2, "F" => 3)
 
-function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Matrix{TY}}; solver = ACEfit.SKLEARN_BRR()) where {T, TY}
+function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Matrix{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I) where {T, TY}
     TP = typeof(model)
     LLset = [(l1,l2) for l2 in 0:get_L(model)[2], l1 in 0:get_L(model)[1]]
     n_orbs1, n_orbs2 = get_norbs(model)
@@ -21,26 +21,27 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     layer_set = ["layer_$i" for i in 1:length(LLset)]
     layer_set = Symbol.(layer_set)
 
+    # evaluate the EQM - just once !
+    partial_md = Chain([model.model.layers[i] for i = 1:5]...)
+    ps, st = Lux.setup(MersenneTwister(1234), partial_md)
+    valset = [ partial_md(R,ps,st)[1] for R in Rs ]
+    
     for (i, (l1,l2)) in enumerate(LLset)
         println("Fitting the $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) blocks ...")
         println()
         
         RMSE = 0
-        # C can simply be a vector - saving memory
-        C = zeros(eltype(model.ps.dot[i].W),size(model.ps.dot[i].W)...)
         # construct A
-        A = zeros((2l1+1)*(2l2+1)*length(Rs), size(C,2))
+        A = zeros((2l1+1)*(2l2+1)*length(Rs), size(model.ps.dot[i].W,2))
         
-        partial_md = Chain([model.model.layers[i] for i = 1:5]...)
-        ps, st = Lux.setup(MersenneTwister(1234), partial_md)
-        for (j, R) in enumerate(Rs)
-            A[(2l1+1)*(2l2+1)*(j-1)+1:(2l1+1)*(2l2+1)*j,:] = flat(partial_md(R,ps,st)[1][i])
+        for j = 1:length(Rs)
+            A[(2l1+1)*(2l2+1)*(j-1)+1:(2l1+1)*(2l2+1)*j,:] = flat(valset[j][i])
         end
         # regularization should not be done in this way, which slows down the calculations (and also underestimate the RMSE!!)!
         # num = size(A)[2] # number of basis
         # A = [A; λ*Γ]
         
-        for kk = 1 : size(C, 1)
+        for kk = 1 : size(model.ps.dot[i].W,1)
             ii, jj = k2ij(kk, n_orbs1[l1+1], n_orbs2[l2+1])
             # println("Fitting the ($ii,$jj)-th $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) block ...")
             
@@ -54,15 +55,14 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
             # Y = [Y; zeros(num)]
 
             # solve for C[kk]
-            C[kk,:] = ACEfit.solve(solver, A, Y)["C"];
+            C = ACEfit.solve(solver, A, Y)["C"];
+            @set! model.ps.dot.$(layer_set[i]).W[kk,:] = C
             # list of potential solvers: ACEfit: QR, LSQR, RRQR, SKLEARN_BRR, SKLEARN_ARD, BLR, TruncatedSVD...
             
-            RMSE += norm(A*C[kk,:] - Y)^2/length(Y)
+            RMSE += norm(A*C - Y)^2/length(Y)
         end
         println("RMSE = $(sqrt(RMSE/length(LLset)))")
         println()
-        
-        @set! model.ps.dot.$(layer_set[i]).W = C
     end
     
     model = (TP <: On_Model) ? TP(model.model, model.ps, model.st, model.n_orbs, true) : TP(model.model, model.ps, model.st, model.n_orbs1, model.n_orbs2, true)
