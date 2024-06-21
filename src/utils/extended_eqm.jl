@@ -250,6 +250,43 @@ LuxCore.initialstates(rng::AbstractRNG, l::LinearLayer_loc) =
       ( l.use_cache ?  (pool =  ArrayPool(FlexArrayCache), ) 
                     : (pool =  ArrayPool(FlexArray), ))
 ## =====================================================================================
+# fix something stupid in EQM
+import EquivariantModels: degord2spec
+using EquivariantModels: make_nlms_spec, getspec1idx, gensparse, getspecnlm, specnlm2spec1p
+function degord2spec(radial::Radial_basis; totaldegree, order, Lmax, catagories = [], filtered_extension = simple_extension, wL = 1, islong = true, rSH = false)
+   # Rn = radial.radial_basis(totaldegree)
+   Ylm = CYlmBasis(totaldegree)
+
+   spec1p = make_nlms_spec(radial, Ylm; totaldegree = totaldegree, admissible = (br, by) -> br.n + wL * by.l <= totaldegree)
+   spec1p = sort(spec1p, by = (x -> x.n + x.l * wL))
+   spec1pidx = getspec1idx(spec1p, radial.Radialspec, Ylm)
+
+   # define sparse for n-correlations
+   tup2b = vv -> [ spec1p[v] for v in vv[vv .> 0]  ]
+   default_admissible = bb -> length(bb) == 0 || sum(b.n for b in bb) + wL * sum(b.l for b in bb) <= totaldegree
+
+   # to construct SS, SD blocks
+   if rSH
+      filter_ = bb -> (length(bb) == 0) || iseven(sum(b.l for b in bb) + Lmax) && ( length(bb) == 1 && Lmax == 0 ? bb[1].l == 0 : true )
+   else
+      filter_ = islong ? bb -> true : bb -> (length(bb) == 0) || iseven(sum(b.l for b in bb) + Lmax) && ( length(bb) == 1 && Lmax == 0 ? bb[1].l == 0 : true )
+   end
+
+   specAA = gensparse(; NU = order, tup2b = tup2b, filter = filter_, 
+                        admissible = default_admissible,
+                        minvv = fill(0, order), 
+                        maxvv = fill(length(spec1p), order), 
+                        ordered = true)
+
+   spec = [ vv[vv .> 0] for vv in specAA if !(isempty(vv[vv .> 0]))]
+   # map back to nlm
+   AAspec = getspecnlm(spec1p, spec)
+   if !isempty(catagories)
+      AAspec = filtered_extension(AAspec, catagories)
+   end
+   Aspec = specnlm2spec1p(AAspec)[1]
+   return Aspec, AAspec # Aspecgetspecnlm(spec1p, spec)
+end
 
 # Can add a reduce = true/false option to simplify onsite basis
 function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::Int64; categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState = true, isreal = true, tuned_filter = nothing)

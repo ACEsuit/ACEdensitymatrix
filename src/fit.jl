@@ -109,7 +109,7 @@ function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dic
         if length(Rs[key]) == 0 || length(Ys[key]) == 0
             continue
         end
-        model.Models[key] = fit!(model.Models[key], identity.(Rs[key]), identity.(Ys[key]); solver = solver)
+        model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), identity.(pop!(Ys,key)); solver = solver)
     end
     if !isfitted(model)
         @warn("Some models are not fitted because there is a lack of corresponding data...")
