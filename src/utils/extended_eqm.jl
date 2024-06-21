@@ -291,12 +291,12 @@ end
 # Can add a reduce = true/false option to simplify onsite basis
 function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::Int64; categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState = true, isreal = true, tuned_filter = nothing)
 
-   # first filt out those unfeasible spec_nlm
-   filter_init = RPE_filter_long(L1+L2)
-   spec_nlm = spec_nlm[findall(x -> filter_init(x) == 1, spec_nlm)]
+   # # first filt out those unfeasible spec_nlm
+   # filter_init = RPE_filter_long(L1+L2)
+   # spec_nlm = spec_nlm[findall(x -> filter_init(x) == 1, spec_nlm)]
    
-   # sort!(spec_nlm, by = x -> length(x))
-   spec_nlm = closure(spec_nlm,filter_init; categories = categories)
+   # # sort!(spec_nlm, by = x -> length(x))
+   # spec_nlm = closure(spec_nlm,filter_init; categories = categories)
    
    luxchain, ps, st = EquivariantModels.xx2AA(spec_nlm, radial; categories = categories, _get_cat = _get_cat, d = d, rSH = false, isState = isState)
    # F(X) = luxchain_tmp(X, ps, st)[1]
