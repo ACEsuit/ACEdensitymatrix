@@ -27,17 +27,19 @@ function translate_frame(frame::Dict{String,Array})
     return Dict("R"=>R, "D"=>D, "ao_labels"=>frame["Basis set labels"], "atomic_numbers"=>Zs, "H"=>H, "S"=>S, "C"=>C)
 end
 
-function get_state(R,I,J;α=.5)
+function get_state(R,I,J;α=.5,atom_filter = _ -> true)
     if I == J
         # Onsite local environment
         @assert I <= length(R)
-        return [PState(rr = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z) for J in setdiff(1:length(R), [I])]
+        RII = [PState(rr = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z) for J in setdiff(1:length(R), [I])]
+        return RII[atom_filter.(RII)]
     else
         # Offsite local environment - we have several options and here comes just one of them that centers the environment at atom I
         # TODO: Implement the other options
         @assert I <= length(R) && J <= length(R)
         RIJ = [PState(rr = SVector{3}(R[K].rr - α*R[I].rr - (1-α)*R[J].rr), rr0 = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z, Zk = R[K].Z, bond = false) for K in setdiff(1:length(R), [I,J])]
         push!(RIJ, PState(rr = SVector{3}(R[J].rr - R[I].rr), rr0 = SVector{3}(R[J].rr - R[I].rr), Zi = R[I].Z, Zj = R[J].Z, Zk = R[J].Z, bond = true))
+        return RIJ[atom_filter.(RIJ)]
     end
 end
 

@@ -38,8 +38,26 @@ struct Off_Model{L1,L2} <: AbstractModel where {L1,L2}
     fitted::Bool
 end
 
+get_cutoff(model::On_Model) = model.model.layers.embed.layers.Rn.rcut
+get_cutoff(model::Off_Model) = [model.model.layers.embed.layers.Rn.rcut1, model.model.layers.embed.layers.Rn.rcut2]
+
 struct Density_Model{T}
     Models::Dict{Union{T,Tuple{T,T}},AbstractModel}
+end
+
+function get_cutoff(model::Density_Model)
+    rcut_on = 0.0
+    rcut_off = 0.0
+    zcut = 0.0
+    for key in keys(model.Models)
+        if !(typeof(key) <: Tuple)
+            rcut_on = max(rcut_on, get_cutoff(model.Models[key]))
+        else
+            rcut_off = max(rcut_off, get_cutoff(model.Models[key])[1])
+            zcut = max(zcut, get_cutoff(model.Models[key])[2])
+        end
+    end
+    return rcut_on, rcut_off, zcut
 end
 
 isfitted(model::AbstractModel) = model.fitted
@@ -130,12 +148,14 @@ function eval_model(model::Density_Model, R::Union{PState{T}, Vector{PState{T}}}
     # ao_labels is the labels of atoms and the corresponding basis sets
     # the output is the density matrix, ordering as the ao_labels
 
+    rcut_on, r_cut_off, zcut = get_cutoff(model)
     ao_labels = apply_reorder(ao_labels) # with this line, we fit the reordered Density matrix in the correct order but need to map it back to the original order
 
     atom_ids, atom_symbols, shells, ls, ms = unpack(ao_labels)
     atom_ids .+= 1
 
     D = zeros(Float64,length(atom_ids),length(atom_ids))
+    TP = typeof(D)
 
     for I = 1:length(R)
         for J = I:length(R)
@@ -143,15 +163,15 @@ function eval_model(model::Density_Model, R::Union{PState{T}, Vector{PState{T}}}
             pos_J = findall(x->x==J, atom_ids)
             if I == J
                 md = model.Models[R[I].Z]
-                D[pos_I,pos_J] = sub_densitymatrix(md.model(get_state(R,I,I), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...; sym = true)
+                D[pos_I,pos_J] = sub_densitymatrix(md.model(get_state(R,I,I;atom_filter=filter_on(rcut_on)), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...; sym = true)
             else
                 if R[I].Z > R[J].Z
                     md = model.Models[(R[J].Z,R[I].Z)]
-                    D[pos_J,pos_I] = sub_densitymatrix(md.model(get_state(R,J,I), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...)
+                    D[pos_J,pos_I] = sub_densitymatrix(md.model(get_state(R,J,I;atom_filter=filter_off(r_cut_off, zcut)), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...)
                     D[pos_I,pos_J] = D[pos_J,pos_I]'
                 else
                     md = model.Models[(R[I].Z,R[J].Z)]
-                    D[pos_I,pos_J] = sub_densitymatrix(md.model(get_state(R,I,J), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...)
+                    D[pos_I,pos_J] = sub_densitymatrix(md.model(get_state(R,I,J;atom_filter=filter_off(r_cut_off, zcut)), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...)
                     D[pos_J,pos_I] = D[pos_I,pos_J]'
                 end
             end

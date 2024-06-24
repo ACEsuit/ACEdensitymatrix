@@ -71,7 +71,11 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     # return model
 end
 
-function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union{T,Tuple{T,T}}}; Mode = "D") where T
+filter_on(rcut::Float64) = x -> norm(x.rr) < rcut
+
+filter_off(rcut::Float64, zcut::Float64=10.0) = x -> ( x.bond == true && norm(x.rr0) < zcut) || (x.bond == false && norm(x.rr - x.rr0./2) < rcut && norm(x.rr + x.rr0./2) < rcut)
+
+function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union{T,Tuple{T,T}}}; Mode = "D", rcut_on = 10.0, r_cut_off = 10.0, zcut = 10.0) where T
     Rs = Dict(key => [] for key in keys)
     Ys = Dict(key => [] for key in keys)
     
@@ -80,14 +84,14 @@ function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union
         for key in keys
             if !(typeof(key) <: Tuple)
                 for i in findall(x->x==key, f["atomic_numbers"])
-                    push!(Rs[key], get_state(f["R"], i, i))
+                    push!(Rs[key], get_state(f["R"], i, i; atom_filter = filter_on(rcut_on)))
                     push!(Ys[key], get_block(f[Mode], i, i, f["ao_labels"]))
                 end
             else
                 i, j = key
                 for ii in findall(x->x==i, f["atomic_numbers"])
                     for jj in setdiff(findall(x->x==j, f["atomic_numbers"]),ii)
-                        push!(Rs[key], get_state(f["R"], ii, jj))
+                        push!(Rs[key], get_state(f["R"], ii, jj; atom_filter = filter_off(r_cut_off, zcut)))
                         push!(Ys[key], get_block(f[Mode], ii, jj, f["ao_labels"]))
                     end
                 end
@@ -102,7 +106,8 @@ end
 # Here, frames can be non_franslated frame (directly read from data) which will be transfer to a readable format (i.e. translate_frame) in split_data function
 # The function should return a fitted Density_Model
 function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), Mode = "D")
-    Rs, Ys = split_data(frames, keys(model.Models); Mode = Mode)
+    rcut_on, r_cut_off, zcut = get_cutoff(model)
+    Rs, Ys = split_data(frames, keys(model.Models); Mode = Mode, rcut_on = rcut_on, r_cut_off = r_cut_off, zcut = zcut)
     for key in keys(model.Models)
         typeof(key) <: Tuple ? println("=== Fitting for $(Dict_Int2Spec[key[1]])-$(Dict_Int2Spec[key[2]]) offsite model ===") : println("==== Fitting for $(Dict_Int2Spec[key]) onsite model ====")
         println()
