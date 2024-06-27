@@ -66,7 +66,7 @@ get_L(model::On_Model{L}) where L = (L-1,L-1)
 get_L(model::Off_Model{L1,L2}) where {L1, L2} = (L1-1,L2-1)
 get_norbs(model::On_Model) = (model.n_orbs,model.n_orbs)
 get_norbs(model::Off_Model) = (model.n_orbs1,model.n_orbs2)
-eval_model(model::AbstractModel, x::Union{PState{T}, Vector{PState{T}}}) where {T} = sub_densitymatrix(model.model(x, model.ps, model.st)[1], get_L(model)..., get_norbs(model)...)
+eval_model(model::AbstractModel, x::Union{PState{T}, Vector{PState{T}}}) where {T} = sub_densitymatrix(model.model(x, model.ps, model.st)[1], get_L(model)..., get_norbs(model)...; sym = typeof(model) <: On_Model)
 
 # NOTE: Here we assume that the same type of atoms are discretized in the same way
 # Input: `ao_dict`` contains a list of atomic numbers and the number of orbitals for each atom
@@ -155,7 +155,6 @@ function eval_model(model::Density_Model, R::Union{PState{T}, Vector{PState{T}}}
     atom_ids .+= 1
 
     D = zeros(Float64,length(atom_ids),length(atom_ids))
-    TP = typeof(D)
 
     for I = 1:length(R)
         for J = I:length(R)
@@ -163,15 +162,18 @@ function eval_model(model::Density_Model, R::Union{PState{T}, Vector{PState{T}}}
             pos_J = findall(x->x==J, atom_ids)
             if I == J
                 md = model.Models[R[I].Z]
-                D[pos_I,pos_J] = sub_densitymatrix(md.model(get_state(R,I,I;atom_filter=filter_on(rcut_on)), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...; sym = true)
+                st = get_state(R,I,I;atom_filter=filter_on(rcut_on))
+                D[pos_I,pos_J] = eval_model(md, st)
             else
                 if R[I].Z > R[J].Z
                     md = model.Models[(R[J].Z,R[I].Z)]
-                    D[pos_J,pos_I] = sub_densitymatrix(md.model(get_state(R,J,I;atom_filter=filter_off(r_cut_off, zcut)), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...)
+                    st = get_state(R,J,I;atom_filter=filter_off(r_cut_off, zcut))
+                    D[pos_J,pos_I] = eval_model(md, st)
                     D[pos_I,pos_J] = D[pos_J,pos_I]'
                 else
                     md = model.Models[(R[I].Z,R[J].Z)]
-                    D[pos_I,pos_J] = sub_densitymatrix(md.model(get_state(R,I,J;atom_filter=filter_off(r_cut_off, zcut)), md.ps, md.st)[1],get_L(md)...,get_norbs(md)...)
+                    st = get_state(R,I,J;atom_filter=filter_off(r_cut_off, zcut))
+                    D[pos_I,pos_J] = eval_model(md, st)
                     D[pos_J,pos_I] = D[pos_I,pos_J]'
                 end
             end
