@@ -21,23 +21,26 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     layer_set = ["layer_$i" for i in 1:length(LLset)]
     layer_set = Symbol.(layer_set)
 
-    # evaluate the EQM - just once !
+    # evaluate the EQM for all R in Rs, just once, and construct all the design matrices A -> A_all
     partial_md = Chain([model.model.layers[i] for i = 1:5]...)
     ps, st = Lux.setup(MersenneTwister(1234), partial_md)
-    valset = [ partial_md(R,ps,st)[1] for R in Rs ]
-    
+    A_all = [ zeros((2*LLset[i][1]+1)*(2*LLset[i][2]+1)*length(Rs), size(model.ps.dot[i].W,2)) for i = 1:length(LLset) ]
+
+    for (j,R) in enumerate(Rs)
+        valset = partial_md(R,ps,st)[1]
+        for (i, (l1,l2)) in enumerate(LLset)
+            A_all[i][(2l1+1)*(2l2+1)*(j-1)+1:(2l1+1)*(2l2+1)*j,:] = flat(valset[i])
+        end
+    end
+
     for (i, (l1,l2)) in enumerate(LLset)
         println("Fitting the $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) blocks ...")
         println()
         
         RMSE = 0
-        # construct A
-        A = zeros((2l1+1)*(2l2+1)*length(Rs), size(model.ps.dot[i].W,2))
-        
-        for j = 1:length(Rs)
-            A[(2l1+1)*(2l2+1)*(j-1)+1:(2l1+1)*(2l2+1)*j,:] = flat(valset[j][i])
-        end
-        # regularization should not be done in this way, which slows down the calculations (and also underestimate the RMSE!!)!
+
+        # get the design matrix A for the (l1,l2) block, and delete the corresponding part in A_all
+        A = popat!(A_all, 1)
         num = size(A)[2] # number of basis
         A = [A; λ*Γ]
         
@@ -61,8 +64,11 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
             
             RMSE += norm((A*C-Y)[1:end-num])^2/(length(Y)-num)
         end
-        println("RMSE = $(sqrt(RMSE/length(LLset)))")
+        # println("RMSE = $(sqrt(RMSE/length(LLset)))")
+        println("RMSE = $(sqrt(RMSE/size(model.ps.dot[i].W,1)))")
         println()
+
+        GC.gc()
     end
     
     model = (TP <: On_Model) ? TP(model.model, model.ps, model.st, model.n_orbs, true) : TP(model.model, model.ps, model.st, model.n_orbs1, model.n_orbs2, true)
