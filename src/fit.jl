@@ -111,7 +111,7 @@ end
 # Fit a whole Density_Model
 # Here, frames can be non_franslated frame (directly read from data) which will be transfer to a readable format (i.e. translate_frame) in split_data function
 # The function should return a fitted Density_Model
-function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), Mode = "D")
+function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, Mode = "D")
     rcut_on, r_cut_off, zcut = get_cutoff(model)
     Rs, Ys = split_data(frames, keys(model.Models); Mode = Mode, rcut_on = rcut_on, r_cut_off = r_cut_off, zcut = zcut)
     for key in keys(model.Models)
@@ -120,7 +120,7 @@ function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dic
         if length(Rs[key]) == 0 || length(Ys[key]) == 0
             continue
         end
-        model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), identity.(pop!(Ys,key)); solver = solver)
+        model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), identity.(pop!(Ys,key)); solver = solver, λ = λ, Γ = Γ)
     end
     if !isfitted(model)
         @warn("Some models are not fitted because there is a lack of corresponding data...")
