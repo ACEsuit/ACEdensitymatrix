@@ -157,7 +157,7 @@ function eval_model(model::Density_Model, R::Union{PState{T}, Vector{PState{T}}}
     D = zeros(Float64,length(atom_ids),length(atom_ids))
 
     Base.Threads.@threads for I = 1:length(R)
-        for J = I:length(R)
+        Base.Threads.@threads for J = I:length(R)
             pos_I = findall(x->x==I, atom_ids)
             pos_J = findall(x->x==J, atom_ids)
             if I == J
