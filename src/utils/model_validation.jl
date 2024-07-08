@@ -11,12 +11,12 @@ function validate_model(MD, frames; Mode = "D")
         R, D, atomic_number, ao_labels, H, S, C = translate_frame(frame)["R"], translate_frame(frame)["D"], translate_frame(frame)["atomic_numbers"], translate_frame(frame)["ao_labels"], translate_frame(frame)["H"], translate_frame(frame)["S"], translate_frame(frame)["C"]
         
         if Mode == "D"
-            @time D_pred = eval_model(MD, R, ao_labels, retraction =  D -> eigen_retraction(D, Int(sum(atomic_number)/2))) # predicted density matrix with retraction
+            D_pred = eval_model(MD, R, ao_labels, retraction =  D -> eigen_retraction(D, Int(sum(atomic_number)/2))) # predicted density matrix with retraction
             RMSE += norm(D_pred - D)^2 / length(D)
             RE += norm(D_pred - D) / norm(D)
             ME = maximum( [maximum(maximum(abs.(D_pred - D))), ME] )
         elseif Mode == "H"
-            @time H_pred = eval_model(MD, R, ao_labels)
+            H_pred = eval_model(MD, R, ao_labels)
             RMSE_H += norm(H_pred - H)^2 / length(H)
             RE_H += norm(H_pred - H) / norm(H)
 
