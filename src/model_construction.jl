@@ -223,6 +223,10 @@ end
 
 reset_cutoff(model::Off_Model, r_cut::Float64, z_cut::Float64) = reset_cutoff(model, r_cut, r_cut, z_cut)
 
+replace_stablize(model::Density_Model) = Density_Model( Dict([ (key => replace_stablize(model.Models[key])) for key in keys(model.Models)] ) )
+replace_stablize(model::On_Model) = On_Model( Chain(embed = model.model.layers.embed, A = model.model.layers.A, AA = model.model.layers.AA, AA2BB = model.model.layers.AA2BB, stablize = WrappedFunction(cc -> real.(cc)), dot = model.model.layers.dot), model.ps, model.st, model.n_orbs, model.fitted)
+replace_stablize(model::Off_Model) = Off_Model( Chain(embed = model.model.layers.embed, A = model.model.layers.A, AA = model.model.layers.AA, AA2BB = model.model.layers.AA2BB, stablize = WrappedFunction(cc -> real.(cc)), dot = model.model.layers.dot), model.ps, model.st, model.n_orbs1, model.n_orbs2, model.fitted)
+
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
 On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); AA2BB=nothing) where{T} = 
                 On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial_basis(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]), AA2BB = AA2BB)..., SVector{Lmax+1}(n_orbs),false)

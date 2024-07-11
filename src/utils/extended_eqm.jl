@@ -332,7 +332,7 @@ function equivariant_model_loc(spec_nlm, radial::Radial_basis, L1::Int64, L2::In
    # end
 
    if isreal
-      l_real = WrappedFunction(cc -> Tuple([identity.(real.(cc[i])) for i = 1:length(cc) ]))
+      l_real = WrappedFunction(cc -> real.(cc)) # WrappedFunction(cc -> Tuple([identity.(real.(cc[i])) for i = 1:length(cc) ]))
       luxchain = append_layer(luxchain, l_real; l_name = :stablize)
    end
 
