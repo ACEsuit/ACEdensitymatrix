@@ -1,6 +1,6 @@
 function unpack(ao_labels::Union{Vector{String},Matrix{String}})
     atom_ids = Int64[]
-    atom_symbols = String[]
+    # atom_symbols = String[]
     shells = Int64[]
     ls = Int64[]
     ms = Int64[]
@@ -14,13 +14,14 @@ function unpack(ao_labels::Union{Vector{String},Matrix{String}})
         m = parse(Int64, m)
 
         push!(atom_ids, atom_id)
-        push!(atom_symbols, atom_symbol)
+        # push!(atom_symbols, atom_symbol)
         push!(shells, shell)
         push!(ls, l)
         push!(ms, m)
     end
 
-    return atom_ids, atom_symbols, shells, ls, ms
+    # return atom_ids, atom_symbols, shells, ls, ms
+    return atom_ids, shells, ls, ms
 end
 
 
@@ -33,7 +34,7 @@ function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}, matrix::
     ref_order = Vector{Int64}(1:size(ao_labels, pos))
 
     # unpack the labels
-    atom_ids, atom_symbols, shells, ls, ms = unpack(ao_labels)
+    atom_ids, shells, ls, ms = unpack(ao_labels)
 
     rotated_matrix = copy(matrix)
 
@@ -139,7 +140,7 @@ function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}})
     ref_order = Vector{Int64}(1:size(ao_labels, pos))
 
     # unpack the labels
-    atom_ids, atom_symbols, shells, ls, ms = unpack(ao_labels)
+    atom_ids, shells, ls, ms = unpack(ao_labels)
 
     # apply the transformations atom by atom
     for atom_id in 0:maximum(atom_ids)
@@ -187,7 +188,7 @@ function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}})
         ref_order[atom_range] = Ul * ref_order[atom_range]
     end
 
-    return ao_labels[ref_order]
+    return ao_labels[ref_order], atom_ids
 end
 
 

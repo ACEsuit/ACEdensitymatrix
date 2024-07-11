@@ -49,9 +49,8 @@ function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Union{Vector{
     # ao_labels are the labels of the basis set
 
     # first assure that the ao_labels are in the correct order
-    ao_labels = apply_reorder(ao_labels)
+    ao_labels, atom_ids = apply_reorder(ao_labels)
 
-    atom_ids, atom_symbols, shells, ls, ms = unpack(ao_labels)
     atom_ids .+= 1
 
     pos_I = findall(x->x==I, atom_ids)
