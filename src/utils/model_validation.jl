@@ -5,6 +5,7 @@ function validate_model(MD, frames; Mode = "D")
     if Mode == "H"
         global RMSE_H = 0
         global RE_H = 0
+        global ME_H = 0
     end
 
     for frame in frames
@@ -19,6 +20,7 @@ function validate_model(MD, frames; Mode = "D")
             H_pred = eval_model(MD, R, ao_labels)
             RMSE_H += norm(H_pred - H)^2 / length(H)
             RE_H += norm(H_pred - H) / norm(H)
+            ME_H = maximum( [maximum(maximum(abs.(H_pred - H))), ME_H] )
 
             s, q = eigen(Symmetric(S))
             s_half = q * Diagonal(s.^(-1/2)) * q'
@@ -40,7 +42,7 @@ function validate_model(MD, frames; Mode = "D")
     try 
         RMSE_H = sqrt(RMSE_H/length(frames)) 
         RE_H /= length(frames) 
-        return RMSE, RE, ME, RMSE_H, RE_H
+        return RMSE, RE, ME, RMSE_H, RE_H, ME_H
     catch
         return RMSE, RE, ME
     end
