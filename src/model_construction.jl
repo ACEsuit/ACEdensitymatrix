@@ -149,9 +149,7 @@ function eval_model(model::Density_Model, R::Union{PState{T}, Vector{PState{T}}}
     # the output is the density matrix, ordering as the ao_labels
 
     rcut_on, r_cut_off, zcut = get_cutoff(model)
-    ao_labels = apply_reorder(ao_labels) # with this line, we fit the reordered Density matrix in the correct order but need to map it back to the original order
-
-    atom_ids, atom_symbols, shells, ls, ms = unpack(ao_labels)
+    ao_labels, atom_ids = apply_reorder(ao_labels) # with this line, we fit the reordered Density matrix in the correct order but need to map it back to the original order
     atom_ids .+= 1
 
     D = zeros(Float64,length(atom_ids),length(atom_ids))
