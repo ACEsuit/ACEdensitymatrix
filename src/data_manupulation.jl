@@ -121,3 +121,31 @@ function get_Y(Y, n_orbs1::Union{Vector{Int64}, SVector{L1,Int64}}, n_orbs2::Uni
 
     return Y[pos_L1, pos_L2][pos_μ1, pos_μ2]
 end
+
+# An attempt to reduce memory usage - it seems to fail but leads to a clean version of the code
+
+function assemble_Y(Ys::Vector{Matrix{TY}}, n_orbs1::Union{Vector{Int64}, SVector{L1,Int64}}, n_orbs2::Union{Vector{Int64}, SVector{L2,Int64}}) where {TY, L1, L2}
+    Y = []
+    try 
+        global LLset = [(l1,l2) for l2 = 0:L2-1, l1 = 0:L1-1]
+    catch
+        global LLset = [(l1,l2) for l2 = 0:length(n_orbs2)-1, l1 = 0:length(n_orbs1)-1]
+    end
+
+    for (i, (l1,l2)) in enumerate(LLset)
+        for kk = 1 : n_orbs1[l1+1]*n_orbs2[l2+1]
+            ii, jj = k2ij(kk, n_orbs1[l1+1], n_orbs2[l2+1])
+            # println("Fitting the ($ii,$jj)-th $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) block ...")
+            
+            Yij = [ get_Y(Ys[t], n_orbs1, n_orbs2, l1, l2, ii, jj) for t = 1:length(Ys) ]
+
+            # construct Y 
+            Y_tmp = zeros(Float64, length(Ys)*length(Yij[1]))
+            for k in 1:length(Ys)
+                Y_tmp[(k-1)*length(Yij[1])+1:k*length(Yij[1])] = Yij[k]
+            end
+            push!(Y, Y_tmp)
+        end
+    end
+    return identity.(Y)
+end

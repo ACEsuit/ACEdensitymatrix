@@ -1,4 +1,4 @@
-using Setfield, LinearAlgebra, ACEfit
+using Setfield, LinearAlgebra, ACEfit, SparseArrays
 
 # ```
 # fit function for onsite model:
@@ -77,6 +77,72 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     # return model
 end
 
+function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Vector{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I) where {T, TY}
+    TP = typeof(model)
+    LLset = [(l1,l2) for l2 in 0:get_L(model)[2], l1 in 0:get_L(model)[1]]
+    n_orbs1, n_orbs2 = get_norbs(model)
+    @assert(length(LLset) == length(model.ps.dot))
+
+    layer_set = ["layer_$i" for i in 1:length(LLset)]
+    layer_set = Symbol.(layer_set)
+
+    # evaluate the EQM for all R in Rs, just once, and construct all the design matrices A -> A_all
+    partial_md = Chain([model.model.layers[i] for i = 1:5]...)
+    ps, st = Lux.setup(MersenneTwister(1234), partial_md)
+    
+    println("Start constructing A")
+    println()
+    A_all = [ zeros((2*LLset[i][1]+1)*(2*LLset[i][2]+1)*length(Rs), size(model.ps.dot[i].W,2)) for i = 1:length(LLset) ]
+
+    # TODO: multi-threading ?
+    for (j,R) in enumerate(Rs)
+        valset = partial_md(R,ps,st)[1]
+        for (i, (l1,l2)) in enumerate(LLset)
+            A_all[i][(2l1+1)*(2l2+1)*(j-1)+1:(2l1+1)*(2l2+1)*j,:] = flat(valset[i])
+        end
+    end
+    println("Finish constructing A")
+    println()
+
+    for (i, (l1,l2)) in enumerate(LLset)
+        println("Fitting the $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) blocks ...")
+        println()
+        
+        RMSE = 0
+
+        # get the design matrix A for the (l1,l2) block, and delete the corresponding part in A_all
+        # This following line avoid the fitting of subblocks being parallelizable, but it is totally fine because of potential memory issues of multi-threading
+        A = [ popat!(A_all, 1); λ*Γ ]
+        GC.gc()
+        num = size(A)[2] # number of basis
+        # A = [A; λ*Γ]
+        
+        for kk = 1 : size(model.ps.dot[i].W,1)
+            # solve for C[kk]
+            Y = [ popat!(Ys, 1); zeros(num) ]
+            GC.gc()
+            C = ACEfit.solve(solver, A, Y)["C"];
+            @set! model.ps.dot.$(layer_set[i]).W[kk,:] = C
+            # list of potential solvers: ACEfit: QR, LSQR, RRQR, SKLEARN_BRR, SKLEARN_ARD, BLR, TruncatedSVD...
+            
+            RMSE += norm((A*C-Y)[1:end-num])^2/(length(Y)-num)
+            Y = nothing
+            GC.gc()
+        end
+        # println("RMSE = $(sqrt(RMSE/length(LLset)))")
+        println("RMSE = $(sqrt(RMSE/size(model.ps.dot[i].W,1)))")
+        println()
+
+        A = nothing
+        GC.gc()
+    end
+    
+    model = (TP <: On_Model) ? TP(model.model, model.ps, model.st, model.n_orbs, true) : TP(model.model, model.ps, model.st, model.n_orbs1, model.n_orbs2, true)
+    # @show model.ps.dot[1].W
+    # @show model.fitted
+    # return model
+end
+
 filter_on(rcut::Float64) = x -> norm(x.rr) < rcut
 
 filter_off(rcut::Float64, zcut::Float64=10.0) = x -> ( x.bond == true && norm(x.rr0) < zcut) || (x.bond == false && norm(x.rr - x.rr0./2) < rcut && norm(x.rr + x.rr0./2) < rcut)
@@ -96,6 +162,7 @@ function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union
             else
                 i, j = key
                 for ii in findall(x->x==i, f["atomic_numbers"])
+                    # TODO: In fact, can we use only half of the jjs, larger than ii, and make use of symmetry
                     for jj in setdiff(findall(x->x==j, f["atomic_numbers"]),ii)
                         push!(Rs[key], get_state(f["R"], ii, jj; atom_filter = filter_off(r_cut_off, zcut)))
                         push!(Ys[key], get_block(f[Mode], ii, jj, f["ao_labels"]))
@@ -111,16 +178,28 @@ end
 # Fit a whole Density_Model
 # Here, frames can be non_franslated frame (directly read from data) which will be transfer to a readable format (i.e. translate_frame) in split_data function
 # The function should return a fitted Density_Model
-function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, Mode = "D")
+function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, Mode = "D", multi_thread = false)
     rcut_on, r_cut_off, zcut = get_cutoff(model)
     Rs, Ys = split_data(frames, keys(model.Models); Mode = Mode, rcut_on = rcut_on, r_cut_off = r_cut_off, zcut = zcut)
-    for key in keys(model.Models)
-        typeof(key) <: Tuple ? println("=== Fitting for $(Dict_Int2Spec[key[1]])-$(Dict_Int2Spec[key[2]]) offsite model ===") : println("==== Fitting for $(Dict_Int2Spec[key]) onsite model ====")
-        println()
-        if length(Rs[key]) == 0 || length(Ys[key]) == 0
-            continue
+    # In principle, the following line can be multi-threaded but may get into memory issues
+    if multi_thread
+        Base.Threads.@threads for key in keys(model.Models)
+            typeof(key) <: Tuple ? println("=== Fitting for $(Dict_Int2Spec[key[1]])-$(Dict_Int2Spec[key[2]]) offsite model ===") : println("==== Fitting for $(Dict_Int2Spec[key]) onsite model ====")
+            println()
+            if length(Rs[key]) == 0 || length(Ys[key]) == 0
+                continue
+            end
+            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, Γ = Γ)
         end
-        model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), identity.(pop!(Ys,key)); solver = solver, λ = λ, Γ = Γ)
+    else
+        for key in keys(model.Models)
+            typeof(key) <: Tuple ? println("=== Fitting for $(Dict_Int2Spec[key[1]])-$(Dict_Int2Spec[key[2]]) offsite model ===") : println("==== Fitting for $(Dict_Int2Spec[key]) onsite model ====")
+            println()
+            if length(Rs[key]) == 0 || length(Ys[key]) == 0
+                continue
+            end
+            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, Γ = Γ)
+        end
     end
     if !isfitted(model)
         @warn("Some models are not fitted because there is a lack of corresponding data...")
