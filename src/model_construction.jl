@@ -39,7 +39,7 @@ struct Off_Model{L1,L2} <: AbstractModel where {L1,L2}
 end
 
 get_cutoff(model::On_Model) = model.model.layers.embed.layers.Rn.rcut
-get_cutoff(model::Off_Model) = [model.model.layers.embed.layers.Rn.rcut1, model.model.layers.embed.layers.Rn.rcut2]
+get_cutoff(model::Off_Model) = [model.model.layers.embed.layers.Rn.rcut1, model.model.layers.embed.layers.Rn.rcut2, model.model.layers.embed.layers.Rn.zcut]
 
 struct Density_Model{T}
     Models::Dict{Union{T,Tuple{T,T}},AbstractModel}
@@ -53,8 +53,8 @@ function get_cutoff(model::Density_Model)
         if !(typeof(key) <: Tuple)
             rcut_on = max(rcut_on, get_cutoff(model.Models[key]))
         else
-            rcut_off = max(rcut_off, get_cutoff(model.Models[key])[1])
-            zcut = max(zcut, get_cutoff(model.Models[key])[2])
+            rcut_off = max(rcut_off, max(get_cutoff(model.Models[key])[1], get_cutoff(model.Models[key])[2]))
+            zcut = max(zcut, get_cutoff(model.Models[key])[3])
         end
     end
     return rcut_on, rcut_off, zcut
