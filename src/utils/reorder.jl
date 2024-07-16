@@ -133,7 +133,7 @@ function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}, matrix::
 end
 
 
-function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}})
+function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}; full_info=false)
 
     pos = typeof(ao_labels) == Vector{String} ? 1 : 2
     # keep a copy of the reordering for debug
@@ -188,7 +188,7 @@ function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}})
         ref_order[atom_range] = Ul * ref_order[atom_range]
     end
 
-    return ao_labels[ref_order], atom_ids
+    return full_info ? (ao_labels[ref_order], atom_ids, ls, ms) : (ao_labels[ref_order], atom_ids)
 end
 
 

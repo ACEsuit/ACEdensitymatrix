@@ -14,7 +14,7 @@ Dict_Orbs2Int = Dict("S" => 0, "P" => 1, "D" => 2, "F" => 3)
 
 function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Matrix{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I) where {T, TY}
     TP = typeof(model)
-    LLset = [(l1,l2) for l2 in 0:get_L(model)[2], l1 in 0:get_L(model)[1]]
+    LLset = [(l1,l2) for l1 in 0:get_L(model)[1] for l2 in 0:get_L(model)[2]]
     n_orbs1, n_orbs2 = get_norbs(model)
     @assert(length(LLset) == length(model.ps.dot))
 
@@ -79,7 +79,7 @@ end
 
 function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Vector{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I) where {T, TY}
     TP = typeof(model)
-    LLset = [(l1,l2) for l2 in 0:get_L(model)[2], l1 in 0:get_L(model)[1]]
+    LLset = [(l1,l2) for l1 in 0:get_L(model)[1] for l2 in 0:get_L(model)[2]]
     n_orbs1, n_orbs2 = get_norbs(model)
     @assert(length(LLset) == length(model.ps.dot))
 

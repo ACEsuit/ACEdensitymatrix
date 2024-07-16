@@ -66,9 +66,8 @@ function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Union{Vector{
     # ao_labels are the labels of the basis set
  
     # first assure that the ao_labels are in the correct order
-    ao_labels = apply_reorder(ao_labels)
+    ao_labels, atom_ids, ls, ms = apply_reorder(ao_labels; full_info=true)
 
-    atom_ids, shells, ls, ms = unpack(ao_labels)
     atom_ids .+= 1
 
     pos_I = findall(x->x==I, atom_ids)
@@ -88,9 +87,8 @@ function get_block(D::Matrix{Float64},I::Int64,J::Int64,ao_labels::Union{Vector{
     # ao_labels are the labels of the basis set
  
     # first assure that the ao_labels are in the correct order
-    ao_labels = apply_reorder(ao_labels)
+    ao_labels, atom_ids, ls, ms = apply_reorder(ao_labels; full_info=true)
 
-    atom_ids, shells, ls, ms = unpack(ao_labels)
     atom_ids .+= 1
 
     pos_I = findall(x->x==I, atom_ids)
@@ -127,9 +125,9 @@ end
 function assemble_Y(Ys::Vector{Matrix{TY}}, n_orbs1::Union{Vector{Int64}, SVector{L1,Int64}}, n_orbs2::Union{Vector{Int64}, SVector{L2,Int64}}) where {TY, L1, L2}
     Y = []
     try 
-        global LLset = [(l1,l2) for l2 = 0:L2-1, l1 = 0:L1-1]
+        global LLset = [(l1,l2) for l1 = 0:L1-1 for l2 = 0:L2-1]
     catch
-        global LLset = [(l1,l2) for l2 = 0:length(n_orbs2)-1, l1 = 0:length(n_orbs1)-1]
+        global LLset = [(l1,l2) for l1 = 0:length(n_orbs1)-1 for l2 = 0:length(n_orbs2)-1]
     end
 
     for (i, (l1,l2)) in enumerate(LLset)
