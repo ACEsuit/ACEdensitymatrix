@@ -108,7 +108,7 @@ function f_env_offsite_new(r,rbond,be::Bool,rcut_I::Float64,rcut_J::Float64,zcut
     if be == true
         return fcut(zcut,pin,pout)(norm(r))
     else be == false
-        return fcut(rcut_I,pin,pout)(rrI) * fcut(rcut_J,pin,pout)(rrJ)
+        return fcut(rcut_I,pin,pout)(rrI) + fcut(rcut_J,pin,pout)(rrJ)
     end
 end
 
