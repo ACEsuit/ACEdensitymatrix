@@ -77,7 +77,7 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     # return model
 end
 
-function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Vector{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I) where {T, TY}
+function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Vector{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, GC_switcher = false) where {T, TY}
     TP = typeof(model)
     LLset = [(l1,l2) for l1 in 0:get_L(model)[1] for l2 in 0:get_L(model)[2]]
     n_orbs1, n_orbs2 = get_norbs(model)
@@ -113,28 +113,28 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
         # get the design matrix A for the (l1,l2) block, and delete the corresponding part in A_all
         # This following line avoid the fitting of subblocks being parallelizable, but it is totally fine because of potential memory issues of multi-threading
         A = [ popat!(A_all, 1); λ*Γ ]
-        GC.gc()
+        if GC_switcher; GC.gc(); end
         num = size(A)[2] # number of basis
         # A = [A; λ*Γ]
         
         for kk = 1 : size(model.ps.dot[i].W,1)
             # solve for C[kk]
             Y = [ popat!(Ys, 1); zeros(num) ]
-            GC.gc()
+            if GC_switcher; GC.gc(); end
             C = ACEfit.solve(solver, A, Y)["C"];
             @set! model.ps.dot.$(layer_set[i]).W[kk,:] = C
             # list of potential solvers: ACEfit: QR, LSQR, RRQR, SKLEARN_BRR, SKLEARN_ARD, BLR, TruncatedSVD...
             
             RMSE += norm((A*C-Y)[1:end-num])^2/(length(Y)-num)
             Y = nothing
-            GC.gc()
+            if GC_switcher; GC.gc(); end
         end
         # println("RMSE = $(sqrt(RMSE/length(LLset)))")
         println("RMSE = $(sqrt(RMSE/size(model.ps.dot[i].W,1)))")
         println()
 
         A = nothing
-        GC.gc()
+        if GC_switcher; GC.gc(); end
     end
     
     model = (TP <: On_Model) ? TP(model.model, model.ps, model.st, model.n_orbs, true) : TP(model.model, model.ps, model.st, model.n_orbs1, model.n_orbs2, true)
@@ -145,7 +145,8 @@ end
 
 filter_on(rcut::Float64) = x -> norm(x.rr) < rcut
 
-filter_off(rcut::Float64, zcut::Float64=10.0) = x -> ( x.bond == true && norm(x.rr0) < zcut) || (x.bond == false && norm(x.rr - x.rr0./2) < rcut && norm(x.rr + x.rr0./2) < rcut)
+# filter_off(rcut::Float64, zcut::Float64=10.0) = x -> ( x.bond == true && norm(x.rr0) < zcut) || (x.bond == false && norm(x.rr - x.rr0./2) < rcut && norm(x.rr + x.rr0./2) < rcut)
+filter_off(rcut::Float64, zcut::Float64=10.0) = x -> x.bond == true || (x.bond == false && norm(x.rr - x.rr0./2) < rcut && norm(x.rr + x.rr0./2) < rcut)
 
 function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union{T,Tuple{T,T}}}; Mode = "D", rcut_on = 10.0, r_cut_off = 10.0, zcut = 10.0) where T
     Rs = Dict(key => [] for key in keys)
@@ -178,7 +179,7 @@ end
 # Fit a whole Density_Model
 # Here, frames can be non_franslated frame (directly read from data) which will be transfer to a readable format (i.e. translate_frame) in split_data function
 # The function should return a fitted Density_Model
-function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, Mode = "D", multi_thread = false)
+function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, Mode = "D", multi_thread = false, GC_switcher = false)
     rcut_on, r_cut_off, zcut = get_cutoff(model)
     Rs, Ys = split_data(frames, keys(model.Models); Mode = Mode, rcut_on = rcut_on, r_cut_off = r_cut_off, zcut = zcut)
     # In principle, the following line can be multi-threaded but may get into memory issues
@@ -189,7 +190,7 @@ function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dic
             if length(Rs[key]) == 0 || length(Ys[key]) == 0
                 continue
             end
-            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, Γ = Γ)
+            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, Γ = Γ, GC_switcher = GC_switcher)
         end
     else
         for key in keys(model.Models)
@@ -198,7 +199,7 @@ function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dic
             if length(Rs[key]) == 0 || length(Ys[key]) == 0
                 continue
             end
-            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, Γ = Γ)
+            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, Γ = Γ, GC_switcher = GC_switcher)
         end
     end
     if !isfitted(model)
