@@ -92,7 +92,14 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     
     println("Start constructing A")
     println()
-    A_all = [ zeros((2*LLset[i][1]+1)*(2*LLset[i][2]+1)*length(Rs), size(model.ps.dot[i].W,2)) for i = 1:length(LLset) ]
+    A_all = [ zeros((2*LLset[i][1]+1)*(2*LLset[i][2]+1)*length(Rs) + size(model.ps.dot[i].W,2), size(model.ps.dot[i].W,2)) for i = 1:length(LLset) ]
+    for i in 1:length(LLset)
+        try 
+            A_all[i][end-size(model.ps.dot[i].W,2)+1:end,:] = λ*Γ 
+        catch 
+            A_all[i][end-size(model.ps.dot[i].W,2)+1:end,:] = λ*Γ(size(model.ps.dot[i].W,2))
+        end
+    end
 
     # TODO: multi-threading ?
     for (j,R) in enumerate(Rs)
@@ -112,7 +119,7 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
 
         # get the design matrix A for the (l1,l2) block, and delete the corresponding part in A_all
         # This following line avoid the fitting of subblocks being parallelizable, but it is totally fine because of potential memory issues of multi-threading
-        A = [ popat!(A_all, 1); λ*Γ ]
+        A = popat!(A_all, 1)
         if GC_switcher; GC.gc(); end
         num = size(A)[2] # number of basis
         # A = [A; λ*Γ]
