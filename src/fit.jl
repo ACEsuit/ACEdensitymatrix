@@ -120,8 +120,12 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
         # get the design matrix A for the (l1,l2) block, and delete the corresponding part in A_all
         # This following line avoid the fitting of subblocks being parallelizable, but it is totally fine because of potential memory issues of multi-threading
         A = popat!(A_all, 1)
-        if GC_switcher; GC.gc(); end
         num = size(A)[2] # number of basis
+        if length(A) > 1e6 && !GC_switcher
+            GC_switcher = true
+        end
+
+        if GC_switcher; GC.gc(); end
         # A = [A; λ*Γ]
         
         for kk = 1 : size(model.ps.dot[i].W,1)
@@ -213,4 +217,77 @@ function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dic
         @warn("Some models are not fitted because there is a lack of corresponding data...")
     end
     # return model
+end
+
+function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set = nothing)
+    if train_set == nothing
+        train_set = [ Vector{Int64}(0:10:Ndata/10-1) for _ = 1:length(filenames) ]
+    end
+    test_set = Vector{Int64}(9/10*Ndata:10:Ndata-1)
+
+    frames_train = []
+    for (k,fname) in enumerate(filenames)
+        molecule = TrajectoryHDF5(fname)
+        push!(frames_train,[ read_frame(molecule,Int(i)) for i in train_set[k] ]...) # constructing a training data set with Ndata frames for a single .h5 file
+    end
+    frames_train = identity.(frames_train)
+
+    frames_test = []
+    for fname in filenames
+        molecule = TrajectoryHDF5(fname)
+        push!(frames_test,[ read_frame(molecule,Int(i)) for i in test_set ]...) # constructing a test data set with Ndata frames for a single .h5 file
+    end
+    frames_test = identity.(frames_test)
+
+    for i = 1:8
+        # Fit the model
+        fit!(DM, frames_train; solver = ACEfit.QR(), λ = 1e-4)#, Mode = "H"))
+        # training rmse
+        rmse_train = validate_model(DM, frames_train)[1]
+        # test rmse
+        rmse_test = validate_model(DM, frames_test)[1]
+        if rmse_test < η * rmse_train
+            println("training set founded with $(sum(length(train_set[t]) for t in 1:length(train_set))) frames")
+            println("training RMSE: $rmse_train")
+            println("test RMSE: $rmse_test")
+            println()
+            break
+        else
+            println("test RMSE ($rmse_test) is greater than $η times the training RMSE ($rmse_train)")
+            println()
+        end
+    
+        # Add more data
+        println("Entering $(i * Ndata/10) - $((i+1) * Ndata/10 - 1) frames")
+        println()
+        test_set_amended = Vector{Int64}(i * Ndata/10:(i+1) * Ndata/10 - 1)
+        for (k,fname) in enumerate(filenames)
+            frames_tmp = []
+            molecule = TrajectoryHDF5(fname)
+            push!(frames_tmp,[ read_frame(molecule,Int(i)) for i in test_set_amended ]...) # constructing a test data set with Ndata frames for a single .h5 file
+            for (kk,frame) in enumerate(frames_tmp)
+                rmse_tmp = validate_model(DM, [frame])[1]
+                if rmse_tmp > η * rmse_train
+                    push!(frames_train, frame)
+                    push!(train_set[k], test_set_amended[kk])
+                end
+            end
+        end
+    end
+
+    rmse_train = validate_model(DM, frames_train)[1]
+    rmse_test = validate_model(DM, frames_test)[1]
+
+    println("training RMSE: $rmse_train")
+    println("test RMSE: $rmse_test")
+    if rmse_test < η * rmse_train
+        println("test RMSE ($rmse_test) is less than $η times the training RMSE ($rmse_train)")
+    else
+        println("test RMSE ($rmse_test) is greater than $η times the training RMSE ($rmse_train)")
+    end
+
+    save("test/$(Folder)/$(system)/tuned_sampling/log_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata).jld2", Dict("__id__" => "training_set", "train_set" => train_set, "rmse_train" => rmse_train, "rmse_test" => rmse_test, "Ndata" => length(train_set)))
+    save("test/$(Folder)/$(system)/tuned_sampling/model_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata).jld2", write_dict(DM))
+
+    return DM, train_set
 end
