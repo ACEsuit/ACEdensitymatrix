@@ -239,7 +239,7 @@ function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set
     end
     frames_test = identity.(frames_test)
 
-    for i = 1:8
+    for i = 0:8
         # Fit the model
         fit!(DM, frames_train; solver = ACEfit.QR(), λ = 1e-4)#, Mode = "H"))
         # training rmse
@@ -266,10 +266,12 @@ function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set
             molecule = TrajectoryHDF5(fname)
             push!(frames_tmp,[ read_frame(molecule,Int(i)) for i in test_set_amended ]...) # constructing a test data set with Ndata frames for a single .h5 file
             for (kk,frame) in enumerate(frames_tmp)
-                rmse_tmp = validate_model(DM, [frame])[1]
-                if rmse_tmp > η * rmse_train
-                    push!(frames_train, frame)
-                    push!(train_set[k], test_set_amended[kk])
+                if !(test_set_amended[kk] in train_set[k])
+                    rmse_tmp = validate_model(DM, [frame])[1]
+                    if rmse_tmp > η * rmse_train
+                        push!(frames_train, frame)
+                        push!(train_set[k], test_set_amended[kk])
+                    end
                 end
             end
         end
@@ -283,7 +285,7 @@ function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set
     if rmse_test < η * rmse_train
         println("test RMSE ($rmse_test) is less than $η times the training RMSE ($rmse_train)")
     else
-        println("test RMSE ($rmse_test) is greater than $η times the training RMSE ($rmse_train)")
+        @warn("test RMSE ($rmse_test) is greater than $η times the training RMSE ($rmse_train)")
     end
 
     save("test/$(Folder)/$(system)/tuned_sampling/log_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata).jld2", Dict("__id__" => "training_set", "train_set" => train_set, "rmse_train" => rmse_train, "rmse_test" => rmse_test, "Ndata" => length(train_set)))
