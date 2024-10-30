@@ -239,7 +239,7 @@ function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set
     end
     frames_test = identity.(frames_test)
 
-    for i = 0:8
+    for i = 1:8
         # Fit the model
         fit!(DM, frames_train; solver = ACEfit.QR(), λ = 1e-4)#, Mode = "H"))
         # training rmse
