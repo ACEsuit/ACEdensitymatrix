@@ -220,8 +220,10 @@ function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dic
 end
 
 function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set = nothing)
+    init = 0 # from which part of frames will we start testing the model
     if train_set == nothing
         train_set = [ Vector{Int64}(0:10:Ndata/10-1) for _ = 1:length(filenames) ]
+        init = 1 # if the train set is not given, it's initialized as an even set from the first 1/10 frames so the first 1000 frames are skipped from testing
     end
     test_set = Vector{Int64}(9/10*Ndata:10:Ndata-1)
 
@@ -239,7 +241,7 @@ function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set
     end
     frames_test = identity.(frames_test)
 
-    for i = 1:8
+    for i = init:8
         # Fit the model
         fit!(DM, frames_train; solver = ACEfit.QR(), λ = 1e-4)#, Mode = "H"))
         # training rmse
