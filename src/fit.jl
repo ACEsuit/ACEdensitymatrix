@@ -219,7 +219,7 @@ function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dic
     # return model
 end
 
-function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set = nothing)
+function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set = nothing, Mode = "D")
     init = 0 # from which part of frames will we start testing the model
     if train_set == nothing
         train_set = [ Vector{Int64}(0:10:Ndata/10-1) for _ = 1:length(filenames) ]
@@ -243,11 +243,11 @@ function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set
 
     for i = init:8
         # Fit the model
-        fit!(DM, frames_train; solver = ACEfit.QR(), λ = 1e-4)#, Mode = "H"))
+        fit!(DM, frames_train; solver = ACEfit.QR(), λ = 1e-4, Mode = Mode)
         # training rmse
-        rmse_train = validate_model(DM, frames_train)[1]
+        rmse_train = validate_model(DM, frames_train; Mode = Mode)[1]
         # test rmse
-        rmse_test = validate_model(DM, frames_test)[1]
+        rmse_test = validate_model(DM, frames_test; Mode = Mode)[1]
         if rmse_test < η * rmse_train
             println("training set founded with $(sum(length(train_set[t]) for t in 1:length(train_set))) frames")
             println("training RMSE: $rmse_train")
@@ -290,8 +290,9 @@ function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set
         @warn("test RMSE ($rmse_test) is greater than $η times the training RMSE ($rmse_train)")
     end
 
-    save("test/$(Folder)/$(system)/tuned_sampling/log_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata).jld2", Dict("__id__" => "training_set", "train_set" => train_set, "rmse_train" => rmse_train, "rmse_test" => rmse_test, "Ndata" => length(train_set)))
-    save("test/$(Folder)/$(system)/tuned_sampling/model_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata).jld2", write_dict(DM))
+    DH = Mode == "D" ? "DensityMatrix" : "Hamiltonian"
+    save("test/$(Folder)/$(system)/tuned_sampling/$(DH)/log_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata).jld2", Dict("__id__" => "training_set", "train_set" => train_set, "rmse_train" => rmse_train, "rmse_test" => rmse_test, "Ndata" => length(train_set)))
+    save("test/$(Folder)/$(system)/tuned_sampling/$(DH)/model_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata).jld2", write_dict(DM))
 
     return DM, train_set
 end
