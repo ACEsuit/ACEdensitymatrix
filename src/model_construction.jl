@@ -182,6 +182,11 @@ function eval_model(model::Density_Model, R::Union{PState{T}, Vector{PState{T}}}
     
 end
 
+function eval_model(model::Density_Model, fm::Dict{String, Array}, Mode = "D")
+    R, D, atomic_number, ao_labels, H, S, C = translate_frame(fm)["R"], translate_frame(fm)["D"], translate_frame(fm)["atomic_numbers"], translate_frame(fm)["ao_labels"], translate_frame(fm)["H"], translate_frame(fm)["S"], translate_frame(fm)["C"];
+    return Mode == "D" ? eval_model(model, R, ao_labels; retraction = D -> eigen_retraction(D, Int(sum(atomic_number)/2))) : eval_model(model, R, ao_labels)
+end
+
 # reset_cutoff function is used to reset the cutoff of the model (it does not change the model itself but create a new one with new cutoffs)
 # after resetting the cutoff, we need to refit the model so isfitted model is always set to be false
 reset_cutoff(model::Density_Model, r_cut::Float64, z_cut::Float64) = Density_Model( Dict([ (key => reset_cutoff(model.Models[key], r_cut, z_cut)) for key in keys(model.Models)] ) )
@@ -226,8 +231,8 @@ replace_stablize(model::On_Model) = On_Model( Chain(embed = model.model.layers.e
 replace_stablize(model::Off_Model) = Off_Model( Chain(embed = model.model.layers.embed, A = model.model.layers.A, AA = model.model.layers.AA, AA2BB = model.model.layers.AA2BB, stablize = WrappedFunction(cc -> real.(cc)), dot = model.model.layers.dot), model.ps, model.st, model.n_orbs1, model.n_orbs2, model.fitted)
 
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
-On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); AA2BB=nothing) where{T} = 
-                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial_basis(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]), AA2BB = AA2BB)..., SVector{Lmax+1}(n_orbs),false)
+On_Model(maxdeg::Union{Int64,Vector{Int64}}, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); AA2BB=nothing) where{T} = 
+                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial_basis(maximum(maxdeg), rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]), AA2BB = AA2BB)..., SVector{Lmax+1}(n_orbs),false)
 
 
 # get the categories of a offsite state
@@ -240,11 +245,11 @@ On_Model(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::I
  end
 
 # An offsite submodel - input is a (local) two-center environment, output is the corresponding offsite block of the density matrix
-Off_Model(maxdeg::Int64, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing) where {T} = 
-                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maxdeg, rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
+Off_Model(maxdeg::Union{Int64,Vector{Int64}}, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing) where {T} = 
+                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maximum(maxdeg), rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
 
-Off_Model(maxdeg::Int64, ord::Int64, rcut1::Float64, rcut2::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing) where {T} = 
-                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maxdeg, rcut1, rcut2, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
+Off_Model(maxdeg::Union{Int64,Vector{Int64}}, ord::Int64, rcut1::Float64, rcut2::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing) where {T} = 
+                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maximum(maxdeg), rcut1, rcut2, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
 
 # The above rcut1 and rcut2 could have different meaning
 # in the different choices of offsite environment, in the 
