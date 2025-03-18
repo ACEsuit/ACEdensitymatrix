@@ -190,10 +190,10 @@ end
 # Fit a whole Density_Model
 # Here, frames can be non_franslated frame (directly read from data) which will be transfer to a readable format (i.e. translate_frame) in split_data function
 # The function should return a fitted Density_Model
-function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, Mode = "D", multi_thread = false, GC_switcher = false)
-    rcut_on, r_cut_off, zcut = get_cutoff(model)
-    Rs, Ys = split_data(frames, keys(model.Models); Mode = Mode, rcut_on = rcut_on, r_cut_off = r_cut_off, zcut = zcut)
-    # In principle, the following line can be multi-threaded but may get into memory issues
+
+# TODO: check the types of Rs and Ys from the above function split_data
+function fit!(model::Density_Model, Rs, Ys; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, Mode = "D", multi_thread = false, GC_switcher = false)
+    
     if multi_thread
         Base.Threads.@threads for key in keys(model.Models)
             typeof(key) <: Tuple ? println("=== Fitting for $(Dict_Int2Spec[key[1]])-$(Dict_Int2Spec[key[2]]) offsite model ===") : println("==== Fitting for $(Dict_Int2Spec[key]) onsite model ====")
@@ -219,80 +219,112 @@ function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dic
     # return model
 end
 
-function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set = nothing, Mode = "D")
-    init = 0 # from which part of frames will we start testing the model
-    if train_set == nothing
-        train_set = [ Vector{Int64}(0:10:Ndata/10-1) for _ = 1:length(filenames) ]
-        init = 1 # if the train set is not given, it's initialized as an even set from the first 1/10 frames so the first 1000 frames are skipped from testing
-    end
-    test_set = Vector{Int64}(9/10*Ndata:10:Ndata-1)
-
-    frames_train = []
-    for (k,fname) in enumerate(filenames)
-        molecule = TrajectoryHDF5(fname)
-        push!(frames_train,[ read_frame(molecule,Int(i)) for i in train_set[k] ]...) # constructing a training data set with Ndata frames for a single .h5 file
-    end
-    frames_train = identity.(frames_train)
-
-    frames_test = []
-    for fname in filenames
-        molecule = TrajectoryHDF5(fname)
-        push!(frames_test,[ read_frame(molecule,Int(i)) for i in test_set ]...) # constructing a test data set with Ndata frames for a single .h5 file
-    end
-    frames_test = identity.(frames_test)
-
-    for i = init:8
-        # Fit the model
-        fit!(DM, frames_train; solver = ACEfit.QR(), λ = 1e-4, Mode = Mode)
-        # training rmse
-        rmse_train = validate_model(DM, frames_train; Mode = Mode)[1]
-        # test rmse
-        rmse_test = validate_model(DM, frames_test; Mode = Mode)[1]
-        if rmse_test < η * rmse_train
-            println("training set founded with $(sum(length(train_set[t]) for t in 1:length(train_set))) frames")
-            println("training RMSE: $rmse_train")
-            println("test RMSE: $rmse_test")
-            println()
-            break
-        else
-            println("test RMSE ($rmse_test) is greater than $η times the training RMSE ($rmse_train)")
-            println()
-        end
-    
-        # Add more data
-        println("Entering $(i * Ndata/10) - $((i+1) * Ndata/10 - 1) frames")
-        println()
-        test_set_amended = Vector{Int64}(i * Ndata/10:(i+1) * Ndata/10 - 1)
-        for (k,fname) in enumerate(filenames)
-            frames_tmp = []
-            molecule = TrajectoryHDF5(fname)
-            push!(frames_tmp,[ read_frame(molecule,Int(i)) for i in test_set_amended ]...) # constructing a test data set with Ndata frames for a single .h5 file
-            for (kk,frame) in enumerate(frames_tmp)
-                if !(test_set_amended[kk] in train_set[k])
-                    rmse_tmp = validate_model(DM, [frame])[1]
-                    if rmse_tmp > η * rmse_train
-                        push!(frames_train, frame)
-                        push!(train_set[k], test_set_amended[kk])
-                    end
-                end
-            end
-        end
-    end
-
-    rmse_train = validate_model(DM, frames_train)[1]
-    rmse_test = validate_model(DM, frames_test)[1]
-
-    println("training RMSE: $rmse_train")
-    println("test RMSE: $rmse_test")
-    if rmse_test < η * rmse_train
-        println("test RMSE ($rmse_test) is less than $η times the training RMSE ($rmse_train)")
-    else
-        @warn("test RMSE ($rmse_test) is greater than $η times the training RMSE ($rmse_train)")
-    end
-
-    DH = Mode == "D" ? "DensityMatrix" : "Hamiltonian"
-    save("test/$(Folder)/$(system)/tuned_sampling/$(DH)/log_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata).jld2", Dict("__id__" => "training_set", "train_set" => train_set, "rmse_train" => rmse_train, "rmse_test" => rmse_test, "Ndata" => length(train_set)))
-    save("test/$(Folder)/$(system)/tuned_sampling/$(DH)/model_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata).jld2", write_dict(DM))
-
-    return DM, train_set
+function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, Mode = "D", multi_thread = false, GC_switcher = false)
+    rcut_on, r_cut_off, zcut = get_cutoff(model)
+    Rs, Ys = split_data(frames, keys(model.Models); Mode = Mode, rcut_on = rcut_on, r_cut_off = r_cut_off, zcut = zcut)
+    fit!(model, Rs, Ys; solver = solver, λ = λ, Γ = Γ, Mode = Mode, multi_thread = multi_thread, GC_switcher = GC_switcher)
 end
+
+# function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set = nothing, Mode = "D", refit = true)
+#     DH = Mode == "D" ? "DensityMatrix" : "Hamiltonian"
+#     init = 0 # from which part of frames will we start testing the model
+#     if train_set == nothing
+#         train_set = [ Vector{Int64}(0:10:Ndata/10-1) for _ = 1:length(filenames) ]
+#         init = 1 # if the train set is not given, it's initialized as an even set from the first 1/10 frames so the first 1000 frames are skipped from testing
+#     end
+#     test_set = Vector{Int64}(9/10*Ndata:10:Ndata-1)
+
+#     # frames_train = []
+#     # for (k,fname) in enumerate(filenames)
+#     #     molecule = TrajectoryHDF5(fname)
+#     #     push!(frames_train,[ read_frame(molecule,Int(i)) for i in train_set[k] ]...) # constructing a training data set with Ndata frames for a single .h5 file
+#     # end
+#     # frames_train = identity.(frames_train)
+
+#     # frames_test = []
+#     # for fname in filenames
+#     #     molecule = TrajectoryHDF5(fname)
+#     #     push!(frames_test,[ read_frame(molecule,Int(i)) for i in test_set ]...) # constructing a test data set with Ndata frames for a single .h5 file
+#     # end
+#     # frames_test = identity.(frames_test)
+
+#     frames_train = [ [] for _ = 1:length(filenames) ]
+#     for (k,fname) in enumerate(filenames)
+#         molecule = TrajectoryHDF5(fname)
+#         push!(frames_train[k],[ read_frame(molecule,Int(i)) for i in train_set[k] ]...) # constructing a training data set with Ndata frames for a single .h5 file
+#     end
+#     frames_train = [ identity.(frames_train[i]) for i = 1:length(frames_train) ]
+#     frames_train_all = union(frames_train...) |> unique
+
+#     frames_test = [ [] for _ = 1:length(filenames) ]
+#     for (k,fname) in enumerate(filenames)
+#         molecule = TrajectoryHDF5(fname)
+#         push!(frames_test[k],[ read_frame(molecule,Int(i)) for i in test_set ]...) # constructing a training data set with Ndata frames for a single .h5 file
+#     end
+#     frames_test = [ identity.(frames_test[i]) for i = 1:length(frames_test) ]
+#     frames_test_all = union(frames_test...) |> unique
+
+#     if refit
+#         fit!(DM, frames_train_all; solver = ACEfit.QR(), λ = 1e-4, Mode = Mode)
+#     end
+
+#     for i = init:8
+#         # training rmse
+#         rmse_train = [ validate_model(DM, frames_train[k]; Mode = Mode)[1] for k = 1:length(filenames) ]
+#         # test rmse
+#         rmse_test = [ validate_model(DM, frames_test[k]; Mode = Mode)[1] for k = 1:length(filenames) ]
+#         if all(rmse_test .< η * rmse_train)
+#             println("training set founded with $(sum(length(train_set[t]) for t in 1:length(train_set))) frames")
+#             println("training RMSE: $(mean(rmse_train))")
+#             println("test RMSE: $(mean(rmse_test))")
+#             println()
+#             break
+#         else
+#             println("test RMSE ($(mean(rmse_test))) is greater than $η times the training RMSE ($(mean(rmse_train)))")
+#             println()
+#         end
+    
+#         # Add more data
+#         println("Entering $(i * Ndata/10) - $((i+1) * Ndata/10 - 1) frames")
+#         println()
+#         test_set_amended = Vector{Int64}(i * Ndata/10:(i+1) * Ndata/10 - 1)
+#         for (k,fname) in enumerate(filenames)
+#             frames_tmp = []
+#             molecule = TrajectoryHDF5(fname)
+#             push!(frames_tmp,[ read_frame(molecule,Int(i)) for i in test_set_amended ]...) # constructing a test data set with Ndata frames for a single .h5 file
+#             for (kk,frame) in enumerate(frames_tmp)
+#                 if !(test_set_amended[kk] in train_set[k])
+#                     rmse_tmp = validate_model(DM, [frame])[1]
+#                     if rmse_tmp > η * rmse_train[k]
+#                         push!(frames_train[k], frame)
+#                         push!(train_set[k], test_set_amended[kk])
+#                     end
+#                 end
+#             end
+#         end
+#         frame_train = [ identity.(frames_train[i]) for i = 1:length(frames_train) ]
+#         frames_train_all = union(frames_train...) |> unique
+
+#         # Fit the model with the new training set
+#         fit!(DM, frames_train_all; solver = ACEfit.QR(), λ = 1e-4, Mode = Mode)
+
+#         save("test/$(Folder)/$(system)/tuned_sampling/$(DH)/QR1e-4/log_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata)_strict.jld2", Dict("__id__" => "training_set", "train_set" => train_set, "rmse_train" => rmse_train, "rmse_test" => rmse_test, "Ndata" => length(train_set)))
+#         save("test/$(Folder)/$(system)/tuned_sampling/$(DH)/QR1e-4/model_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata)_strict.jld2", write_dict(DM))
+#     end
+
+#     rmse_train = validate_model(DM, frames_train_all)[1]
+#     rmse_test = validate_model(DM, frames_test_all)[1]
+
+#     println("training RMSE: $rmse_train")
+#     println("test RMSE: $rmse_test")
+#     if rmse_test < η * rmse_train
+#         println("test RMSE ($rmse_test) is less than $η times the training RMSE ($rmse_train)")
+#     else
+#         @warn("test RMSE ($rmse_test) is greater than $η times the training RMSE ($rmse_train)")
+#     end
+
+#     save("test/$(Folder)/$(system)/tuned_sampling/$(DH)/QR1e-4/log_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata)_strict.jld2", Dict("__id__" => "training_set", "train_set" => train_set, "rmse_train" => rmse_train, "rmse_test" => rmse_test, "Ndata" => length(train_set)))
+#     save("test/$(Folder)/$(system)/tuned_sampling/$(DH)/QR1e-4/model_ord$(order)_maxdeg$(degree)_rcut$(rcut)_zcut$(zcut)_tol$(η)_Ndata$(Ndata)_strict.jld2", write_dict(DM))
+
+#     return DM, train_set
+# end
