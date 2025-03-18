@@ -37,8 +37,32 @@ function Density_Model_tuned(ao_dict::Dict{TP, Dict{String, Any}}) where TP # Th
     return Density_Model{TP}(dict)
 end
 
+# On_Model_tuned(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); AA2BB=nothing) where{T} = 
+#                 On_Model{Lmax+1}(equivariant_operator_tuned(maxdeg,ord,onsite_radial_basis(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]), AA2BB = AA2BB)..., SVector{Lmax+1}(n_orbs),false)
+
+# Off_Model_tuned(maxdeg::Int64, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing) where{T} =
+#                 Off_Model{L1+1,L2+1}(equivariant_operator_tuned(maxdeg,ord,offsite_radial_basis(maxdeg, rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
+
+# Off_Model_tuned(maxdeg::Int64, ord::Int64, rcut1::Float64, rcut2::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing) where{T} =
+#                 Off_Model{L1+1,L2+1}(equivariant_operator_tuned(maxdeg,ord,offsite_radial_basis(maxdeg, rcut1, rcut2, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
+
+# equivariant_operator_tuned(totdeg::Int64, ν::Int64, radial::Radial_basis, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState=true, isreal = true, cat_extension = simple_extension) = 
+#                 equivariant_operator(totdeg, ν+1, radial, L1, L2, n_orbs1, n_orbs2; categories = categories, _get_cat = _get_cat, AA2BB = AA2BB, d = d, group = group, isState = isState, isreal = isreal, cat_extension = cat_extension, tuned_filter = (l1,l2,u) -> filter_tuned(l1,l2,u))
+
+# equivariant_operator_tuned(totdeg::Int64, ν::Int64, radial::Radial_basis, L::Int64, n_orbs::Vector{Int64}=ones(Int64,L1+1); categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState=true, isreal = true, cat_extension = simple_extension) = 
+#                 equivariant_operator_tuned(totdeg, ν, radial, L, L, n_orbs, n_orbs; categories = categories, _get_cat = _get_cat, AA2BB = AA2BB, d = d, group = group, isState = isState, isreal = isreal, cat_extension = cat_extension)
+
+
+# function filter_tuned(l1::Int64, l2::Int64,ν::Int64)
+#     if l1 == l2 == 1
+#         return RPE_filter(2)
+#     else
+#         return bb -> (length(bb) == 0) || (length(bb) == 0) || ((length(bb) < ν) && (abs(sum(b.m for b in bb)) <= l1+l2) && iseven(sum(b.l for b in bb)+l1+l2)) && ( length(bb) == 1 && l1+l2 == 0 ? bb[1].l == 0 : true )
+#     end
+# end
+
 On_Model_tuned(maxdeg::Int64, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); AA2BB=nothing) where{T} = 
-                On_Model{Lmax+1}(equivariant_operator_tuned(maxdeg,ord,onsite_radial_basis(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]), AA2BB = AA2BB)..., SVector{Lmax+1}(n_orbs),false)
+                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial_basis(maxdeg, rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]), AA2BB = AA2BB)..., SVector{Lmax+1}(n_orbs),false)
 
 Off_Model_tuned(maxdeg::Int64, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing) where{T} =
                 Off_Model{L1+1,L2+1}(equivariant_operator_tuned(maxdeg,ord,offsite_radial_basis(maxdeg, rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
@@ -54,8 +78,8 @@ equivariant_operator_tuned(totdeg::Int64, ν::Int64, radial::Radial_basis, L::In
 
 
 function filter_tuned(l1::Int64, l2::Int64,ν::Int64)
-    if l1 == l2 == 1
-        return RPE_filter(2)
+    if l1 == 1 || l2 == 1
+        return RPE_filter(l2+l2)
     else
         return bb -> (length(bb) == 0) || (length(bb) == 0) || ((length(bb) < ν) && (abs(sum(b.m for b in bb)) <= l1+l2) && iseven(sum(b.l for b in bb)+l1+l2)) && ( length(bb) == 1 && l1+l2 == 0 ? bb[1].l == 0 : true )
     end
