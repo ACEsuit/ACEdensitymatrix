@@ -1,7 +1,10 @@
+using Random, EquivariantModels, Lux
 using EquivariantModels: _get_cat_default,RPE_filter_long, closure, _linear_operator_L, _close, rpe_basis, _nlms2b, _gramian, LinearSearch, ConstLinearLayer, genmul!
 using Polynomials4ML: LinearLayer
 using Lux: AbstractExplicitLayer
-import EquivariantModels: _rpi_A2B_matrix, _valtype, rpe_basis, RPE_filter
+import EquivariantModels: _rpi_A2B_matrix, _valtype, rpe_basis, RPE_filter, simple_extension
+
+export equivariant_operator, extend_n_orbs, LinearLayer_loc, ConstLinearLayer_loc
 
 ## Construct a new EQM that generates also tensorial basis
 # TODO: Lux has also a ReshapeLayer that could be used - might be a way to get rid of Rot3DCoeffs_loc

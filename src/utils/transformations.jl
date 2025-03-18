@@ -4,6 +4,8 @@ using RepLieGroups.O3: ClebschGordan, wigner_D_indices, adjoint, Rot3DCoeffs, di
 import RepLieGroups.O3: _mrange
 import EquivariantModels: coco_dot
 
+export eigen_retraction, svd_retraction, flat, k2ij
+
 # The transformation matrix from complex SHs to real SHs
 function ctran(L)
     AA = spzeros(ComplexF64,2L+1, 2L+1)
@@ -149,7 +151,7 @@ coco_filter(::Val{L1}, ::Val{L2}, ll, mm, kk) where {L1, L2} = iseven(sum(ll)+L1
 coco_dot(u1::SMatrix{L1,L2,T}, u2::SMatrix{L1,L2,T}) where {L1,L2,T} = dot(u1, u2)
 coco_dot(u1::SMatrix{L1,L2,T,L}, u2::SMatrix{L1,L2,T,L}) where {L1,L2,T,L} = dot(u1, u2)
 
-Rot3DCoeffs_loc(L1, L2, T=Float64) = Rot3DCoeffs_loc{L1, L2, T}(Dict[], ClebschGordan(T))
+# Rot3DCoeffs_loc(L1, L2, T=Float64) = Rot3DCoeffs_loc{L1, L2, T}(Dict[], ClebschGordan(T))
 
 _ValL1(::Rot3DCoeffs_loc{L1,L2,T}) where {L1,L2,T} = Val{L1}()
 _ValL2(::Rot3DCoeffs_loc{L1,L2,T}) where {L1,L2,T} = Val{L2}() 

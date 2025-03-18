@@ -1,4 +1,9 @@
 ## A file that contains all the codes that are related to radial basis construction
+using Polynomials4ML, Lux
+using Polynomials4ML: ScalarPoly4MLBasis, AbstractExplicitLayer, lux
+using EquivariantModels: Radial_basis
+
+export onsite_radial_basis, offsite_radial_basis, Sample_Onsite_Radial, Sample_Offsite_Radial, Default_Polynomial_Type
 
 const Default_Polynomial_Type = legendre_basis
 

@@ -1,4 +1,9 @@
+module Database
+
 using DecoratedParticles, StaticArrays, LinearAlgebra
+using DensityMatrixLearning
+
+export apply_reorder, read_frame, translate_frame, get_state, assemble_Y, get_block, TrajectoryHDF5
 
 include("utils/hdf5.jl")
 include("utils/reorder.jl")
@@ -147,3 +152,5 @@ function assemble_Y(Ys::Vector{Matrix{TY}}, n_orbs1::Union{Vector{Int64}, SVecto
     end
     return identity.(Y)
 end
+
+end # module

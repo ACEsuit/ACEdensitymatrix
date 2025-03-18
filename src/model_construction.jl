@@ -1,10 +1,12 @@
-using EquivariantModels, Polynomials4ML, Lux, Random
+module ModelConstruction
+
+using DensityMatrixLearning
+using EquivariantModels, Polynomials4ML, Lux, Random, LinearAlgebra
 using EquivariantModels: simple_radial_basis, Radial_basis, append_layer, simple_extension
 using Polynomials4ML: ScalarPoly4MLBasis, lux, natural_indices
+using DecoratedParticles, StaticArrays
 
-include("utils/transformations.jl")
-include("utils/extended_eqm.jl")
-include("radial_basis.jl")
+export AbstractModel, Density_Model, On_Model, Off_Model, get_L, get_norbs, isfitted, get_cutoff, filter_on, filter_off, eval_model, _get_cat_offsite
 
 # Should be removed after the next release of EquivariantModels
 import EquivariantModels: specnlm2spec1p
@@ -40,6 +42,11 @@ end
 
 get_cutoff(model::On_Model) = model.model.layers.embed.layers.Rn.rcut
 get_cutoff(model::Off_Model) = [model.model.layers.embed.layers.Rn.rcut1, model.model.layers.embed.layers.Rn.rcut2, model.model.layers.embed.layers.Rn.zcut]
+
+filter_on(rcut::Float64) = x -> norm(x.rr) < rcut
+
+# filter_off(rcut::Float64, zcut::Float64=10.0) = x -> ( x.bond == true && norm(x.rr0) < zcut) || (x.bond == false && norm(x.rr - x.rr0./2) < rcut && norm(x.rr + x.rr0./2) < rcut)
+filter_off(rcut::Float64, zcut::Float64=10.0) = x -> x.bond == true || (x.bond == false && norm(x.rr - x.rr0./2) < rcut && norm(x.rr + x.rr0./2) < rcut)
 
 struct Density_Model{T}
     Models::Dict{Union{T,Tuple{T,T}},AbstractModel}
@@ -154,8 +161,10 @@ function eval_model(model::Density_Model, R::Union{PState{T}, Vector{PState{T}}}
 
     D = zeros(Float64,length(atom_ids),length(atom_ids))
 
-    Base.Threads.@threads for I = 1:length(R)
-        Base.Threads.@threads for J = I:length(R)
+    # Base.Threads.@threads for I = 1:length(R)
+    #     Base.Threads.@threads for J = I:length(R)
+    for I = 1:length(R)
+        for J = I:length(R)
             pos_I = findall(x->x==I, atom_ids)
             pos_J = findall(x->x==J, atom_ids)
             if I == J
@@ -278,3 +287,7 @@ function sub_densitymatrix(x::NTuple{Len,Vector},L1::Int64,L2::Int64,n_orbs1::Un
 
     return sym == true ? (D + D')/2 : D
 end
+
+include("tuned_models.jl")
+
+end # module

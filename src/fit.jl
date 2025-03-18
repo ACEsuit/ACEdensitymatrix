@@ -1,4 +1,9 @@
-using Setfield, LinearAlgebra, ACEfit, SparseArrays
+module Fitting
+
+using DensityMatrixLearning
+using Setfield, LinearAlgebra, ACEfit, SparseArrays, DecoratedParticles, Lux, Random
+export fit!
+
 
 # ```
 # fit function for onsite model:
@@ -153,11 +158,6 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     # @show model.fitted
     # return model
 end
-
-filter_on(rcut::Float64) = x -> norm(x.rr) < rcut
-
-# filter_off(rcut::Float64, zcut::Float64=10.0) = x -> ( x.bond == true && norm(x.rr0) < zcut) || (x.bond == false && norm(x.rr - x.rr0./2) < rcut && norm(x.rr + x.rr0./2) < rcut)
-filter_off(rcut::Float64, zcut::Float64=10.0) = x -> x.bond == true || (x.bond == false && norm(x.rr - x.rr0./2) < rcut && norm(x.rr + x.rr0./2) < rcut)
 
 function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union{T,Tuple{T,T}}}; Mode = "D", rcut_on = 10.0, r_cut_off = 10.0, zcut = 10.0) where T
     Rs = Dict(key => [] for key in keys)
@@ -328,3 +328,5 @@ end
 
 #     return DM, train_set
 # end
+
+end # module

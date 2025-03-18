@@ -1,3 +1,10 @@
+module ModelValidation
+
+using LinearAlgebra
+using DensityMatrixLearning
+
+export validate_model, validate_model_semifull, validate_model_full
+
 function validate_model(MD, frames; Mode = "D")
     RMSE = 0
     MAE = 0
@@ -233,4 +240,6 @@ function validate_model_full(MD, frames; Mode = "D")
     end
 
     Mode == "D" ? (return RMSE) : (return RMSE, RMSE_H)
+end
+
 end

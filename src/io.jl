@@ -1,5 +1,14 @@
+module IOInterface
+
+using DensityMatrixLearning
+using Setfield, Polynomials4ML, EquivariantModels, Lux, Random, StaticArrays
+using Polynomials4ML: natural_indices
+using EquivariantModels: _get_cat_default
+
 ## A file that contains the codes to save and load the Lux model
 import ACEbase: write_dict, read_dict
+
+export write_dict, read_dict
 
 write_dict(l::Sample_Onsite_Radial) = Dict("__id__"=>"Sample_Onsite_Radial", "maxdeg" => l.maxdeg, "rcut" => l.rcut, "pin" => l.pin, "pout" => l.pout, "r0" => l.r0, "p" => l.p)
 read_dict(::Val{:Sample_Onsite_Radial}, dict::Dict) = Sample_Onsite_Radial(dict["maxdeg"], dict["rcut"], dict["pin"], dict["pout"], dict["r0"], dict["p"])
@@ -197,3 +206,5 @@ write_dict(m::Density_Model{T}) where T = Dict("__id__"=>"Density_Model", "Model
 read_dict(::Val{:Density_Model}, dict::Dict) = Density_Model(Dict([ (key => read_dict(dict["Models"][key]) ) for key in setdiff(keys(dict["Models"]),["__id__"])]))
 
 # NOTE: To save a DM dict (write_dict(DM::Density_Model)), JLD.save could be a feasible choice - cf. "test/io_tests.jl".
+
+end # module
