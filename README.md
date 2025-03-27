@@ -1,23 +1,15 @@
-This repository archives the codes used for learning the self-consistent density matrices $D_R$ for a given configuration $R$. The basic idea is to use the linear equivariant Atomic Cluster Expansion models, which have the same symmetry as the density matrix, to represent the density matrix. In order to enforce the predicted density matrix to be a valid density for the given system, a retraction operator is applied afterwards. 
+This package contains the codes used for learning the density matrices $D_{\mathrm{R}}$ for a given molecular configuration $\mathrm{R}$, using the equivariant Atomic Cluster Expansion (ACE) descriptors, which have the same symmetry as the density matrix and form a linearly complete set to represent the density matrix. In order to enforce the predicted density matrix to be a valid density for some systems, a retraction operator is applied afterwards to ensure the Grassmannianness of the density matrix. 
 
-More details about this approach are available at: 
+This package is a `Julia` package that performs model construction, model training, and efficient density matrix prediction. An example of the use of this package can be found on `../test/MWE_arXiv.jl`, which illustrates how to read data, construct models, fit parameters, save the fitted model and predict the density matrix.
 
-https://arxiv.org/abs/2503.08400
-
-An example of its use can be found on `../test/main.jl`, which illustrates the ways of reading data, constructing models, fitting parameters, saving the fitted model and predicting the density matrix.
-
-One should run 
+A part of the package is built on some packages under `ACEsuit` (e.g. `Polynomials4ML.jl`, `EquivariantModels` and `DecoratedParticles.jl`). As a result, the following commands
 
 ```julia
 ] registry add https://github.com/ACEsuit/ACEregistry.git
 ```
 
-when setting up the Julia environment. 
+need to be run in Julia REPL when setting up the Julia environment. 
 
-This repo also uses a developing version of `ACEOperators.jl` (yet to be released), which is written by one of the authors. 
+More details about the above approach are available at: 
 
-TODO: 
-
-- [ ] (Outside this repo) Release `ACELuxOperators.jl`
-- [ ] Modularization
-- [ ] ...?
+https://arxiv.org/abs/2503.08400
