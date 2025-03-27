@@ -19,7 +19,7 @@ function validate_model(MD, frames; Mode = "D")
     ME_H = 0
     
     for frame in frames
-        R, D, atomic_number, ao_labels, H, S, C = translate_frame(frame)["R"], translate_frame(frame)["D"], translate_frame(frame)["atomic_numbers"], translate_frame(frame)["ao_labels"], translate_frame(frame)["H"], translate_frame(frame)["S"], translate_frame(frame)["C"]
+        R, D, atomic_number, ao_labels, H, S, C = convert_frame(frame)["R"], convert_frame(frame)["D"], convert_frame(frame)["atomic_numbers"], convert_frame(frame)["ao_labels"], convert_frame(frame)["H"], convert_frame(frame)["S"], convert_frame(frame)["C"]
         
         if Mode == "D"
             D_pred = eval_model(MD, R, ao_labels, retraction =  D -> eigen_retraction(D, Int(sum(atomic_number)/2))) # predicted density matrix with retraction
@@ -88,7 +88,7 @@ function validate_model_semifull(MD, frames; Mode = "D")
     # n_samples = identity.(n_samples)
 
     for frame in frames
-        R, D, atomic_number, ao_labels, H, S, C = translate_frame(frame)["R"], translate_frame(frame)["D"], translate_frame(frame)["atomic_numbers"], translate_frame(frame)["ao_labels"], translate_frame(frame)["H"], translate_frame(frame)["S"], translate_frame(frame)["C"]
+        R, D, atomic_number, ao_labels, H, S, C = convert_frame(frame)["R"], convert_frame(frame)["D"], convert_frame(frame)["atomic_numbers"], convert_frame(frame)["ao_labels"], convert_frame(frame)["H"], convert_frame(frame)["S"], convert_frame(frame)["C"]
         
         if Mode == "D"
             D_pred = eval_model(MD, R, ao_labels, retraction =  D -> eigen_retraction(D, Int(sum(atomic_number)/2))) # predicted density matrix with retraction
@@ -165,7 +165,7 @@ function validate_model_full(MD, frames; Mode = "D")
     end
 
     for frame in frames
-        R, D, atomic_number, ao_labels, H, S, C = translate_frame(frame)["R"], translate_frame(frame)["D"], translate_frame(frame)["atomic_numbers"], translate_frame(frame)["ao_labels"], translate_frame(frame)["H"], translate_frame(frame)["S"], translate_frame(frame)["C"]
+        R, D, atomic_number, ao_labels, H, S, C = convert_frame(frame)["R"], convert_frame(frame)["D"], convert_frame(frame)["atomic_numbers"], convert_frame(frame)["ao_labels"], convert_frame(frame)["H"], convert_frame(frame)["S"], convert_frame(frame)["C"]
         
         if Mode == "D"
             D_pred = eval_model(MD, R, ao_labels, retraction =  D -> eigen_retraction(D, Int(sum(atomic_number)/2))) # predicted density matrix with retraction

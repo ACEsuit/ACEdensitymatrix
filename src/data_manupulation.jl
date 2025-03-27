@@ -3,13 +3,13 @@ module Database
 using DecoratedParticles, StaticArrays, LinearAlgebra
 using ACEdensitymatrix
 
-export apply_reorder, read_frame, translate_frame, get_state, assemble_Y, get_block, TrajectoryHDF5
+export apply_reorder, read_frame, convert_frame, get_state, assemble_Y, get_block, TrajectoryHDF5
 
 include("utils/hdf5.jl")
 include("utils/reorder.jl")
 
 # translate a frame to a pair of data (R, D_R)
-function translate_frame(frame::Dict{String,Array})
+function convert_frame(frame::Dict{String,Array})
     Zs = Int64.(frame["Atomic numbers"]) 
     Rs = [ frame["Coordinates"][:,i] for i in 1:size(frame["Coordinates"],2) ]
     @assert length(Zs) == length(Rs)

@@ -151,8 +151,6 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
             # solve for C[kk]
             Y = [ popat!(Ys, 1); zeros(num) ]
             if GC_switcher; GC.gc(); end
-            @show size(A)
-            @show rank(A)
             C = ACEfit.solve(solver, A, Y)["C"];
             @set! model.ps.dot.$(layer_set[i]).W[kk,:] = C
             # list of potential solvers: ACEfit: QR, LSQR, RRQR, SKLEARN_BRR, SKLEARN_ARD, BLR, TruncatedSVD...
@@ -180,7 +178,7 @@ function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union
     Ys = Dict(key => [] for key in keys)
     
     for frame in frames
-        f = translate_frame(frame)
+        f = convert_frame(frame)
         for key in keys
             if !(typeof(key) <: Tuple)
                 for i in findall(x->x==key, f["atomic_numbers"])
@@ -204,7 +202,7 @@ function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union
 end
 
 # Fit a whole Density_Model
-# Here, frames can be non_franslated frame (directly read from data) which will be transfer to a readable format (i.e. translate_frame) in split_data function
+# Here, frames can be non_franslated frame (directly read from data) which will be transfer to a readable format (i.e. convert_frame) in split_data function
 # The function should return a fitted Density_Model
 
 # TODO: check the types of Rs and Ys from the above function split_data

@@ -192,7 +192,7 @@ function eval_model(model::Density_Model, R::Union{PState{T}, Vector{PState{T}}}
 end
 
 function eval_model(model::Density_Model, fm::Dict{String, Array}, Mode = "D")
-    R, D, atomic_number, ao_labels, H, S, C = translate_frame(fm)["R"], translate_frame(fm)["D"], translate_frame(fm)["atomic_numbers"], translate_frame(fm)["ao_labels"], translate_frame(fm)["H"], translate_frame(fm)["S"], translate_frame(fm)["C"];
+    R, D, atomic_number, ao_labels, H, S, C = convert_frame(fm)["R"], convert_frame(fm)["D"], convert_frame(fm)["atomic_numbers"], convert_frame(fm)["ao_labels"], convert_frame(fm)["H"], convert_frame(fm)["S"], convert_frame(fm)["C"];
     return Mode == "D" ? eval_model(model, R, ao_labels; retraction = D -> eigen_retraction(D, Int(sum(atomic_number)/2))) : eval_model(model, R, ao_labels)
 end
 
