@@ -1,7 +1,7 @@
 module ModelValidation
 
 using LinearAlgebra
-using DensityMatrixLearning
+using ACEdensitymatrix
 
 export validate_model, validate_model_semifull, validate_model_full
 

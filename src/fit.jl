@@ -1,6 +1,6 @@
 module Fitting
 
-using DensityMatrixLearning
+using ACEdensitymatrix
 using Setfield, LinearAlgebra, ACEfit, SparseArrays, DecoratedParticles, Lux, Random
 export fit!
 
@@ -17,7 +17,7 @@ Dict_Int2Orbs = Dict(0 => "S", 1 => "P", 2 => "D", 3 => "F")
 Dict_Spec2Int = Dict("H" => 1, "C" => 6, "N" => 7, "O" => 8)
 Dict_Orbs2Int = Dict("S" => 0, "P" => 1, "D" => 2, "F" => 3)
 
-function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Matrix{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I) where {T, TY}
+function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Matrix{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, reg = :id) where {T, TY}
     TP = typeof(model)
     LLset = [(l1,l2) for l1 in 0:get_L(model)[1] for l2 in 0:get_L(model)[2]]
     n_orbs1, n_orbs2 = get_norbs(model)
@@ -38,6 +38,12 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
         end
     end
 
+    if reg == :id
+        Γ = [ I for i = 1:length(LLset) ]
+    elseif reg == :smooth
+        Γ = regularizer(model)
+    end
+
     for (i, (l1,l2)) in enumerate(LLset)
         println("Fitting the $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) blocks ...")
         println()
@@ -47,7 +53,8 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
         # get the design matrix A for the (l1,l2) block, and delete the corresponding part in A_all
         A = popat!(A_all, 1)
         num = size(A)[2] # number of basis
-        A = [A; λ*Γ]
+
+        A = [A; λ*Γ[i]]
         
         for kk = 1 : size(model.ps.dot[i].W,1)
             ii, jj = k2ij(kk, n_orbs1[l1+1], n_orbs2[l2+1])
@@ -82,7 +89,7 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     # return model
 end
 
-function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Vector{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, GC_switcher = false) where {T, TY}
+function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Vector{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, reg = :id, GC_switcher = false) where {T, TY}
     TP = typeof(model)
     LLset = [(l1,l2) for l1 in 0:get_L(model)[1] for l2 in 0:get_L(model)[2]]
     n_orbs1, n_orbs2 = get_norbs(model)
@@ -98,11 +105,18 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     println("Start constructing A")
     println()
     A_all = [ zeros((2*LLset[i][1]+1)*(2*LLset[i][2]+1)*length(Rs) + size(model.ps.dot[i].W,2), size(model.ps.dot[i].W,2)) for i = 1:length(LLset) ]
+    
+    if reg == :id
+        Γ = [ I for i = 1:length(LLset) ]
+    elseif reg == :smooth
+        Γ = regularizer(model)
+    end
+    
     for i in 1:length(LLset)
         try 
-            A_all[i][end-size(model.ps.dot[i].W,2)+1:end,:] = λ*Γ 
+            A_all[i][end-size(model.ps.dot[i].W,2)+1:end,:] = λ*Γ[i]
         catch 
-            A_all[i][end-size(model.ps.dot[i].W,2)+1:end,:] = λ*Γ(size(model.ps.dot[i].W,2))
+            A_all[i][end-size(model.ps.dot[i].W,2)+1:end,:] = λ*Γ[i](size(model.ps.dot[i].W,2))
         end
     end
 
@@ -137,6 +151,8 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
             # solve for C[kk]
             Y = [ popat!(Ys, 1); zeros(num) ]
             if GC_switcher; GC.gc(); end
+            @show size(A)
+            @show rank(A)
             C = ACEfit.solve(solver, A, Y)["C"];
             @set! model.ps.dot.$(layer_set[i]).W[kk,:] = C
             # list of potential solvers: ACEfit: QR, LSQR, RRQR, SKLEARN_BRR, SKLEARN_ARD, BLR, TruncatedSVD...
@@ -192,7 +208,7 @@ end
 # The function should return a fitted Density_Model
 
 # TODO: check the types of Rs and Ys from the above function split_data
-function fit!(model::Density_Model, Rs, Ys; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, Mode = "D", multi_thread = false, GC_switcher = false)
+function fit!(model::Density_Model, Rs, Ys; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, reg = :id, Mode = "D", multi_thread = false, GC_switcher = false)
     
     if multi_thread
         Base.Threads.@threads for key in keys(model.Models)
@@ -201,7 +217,7 @@ function fit!(model::Density_Model, Rs, Ys; solver = ACEfit.SKLEARN_BRR(), λ = 
             if length(Rs[key]) == 0 || length(Ys[key]) == 0
                 continue
             end
-            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, Γ = Γ, GC_switcher = GC_switcher)
+            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, reg = reg, GC_switcher = GC_switcher)
         end
     else
         for key in keys(model.Models)
@@ -210,7 +226,7 @@ function fit!(model::Density_Model, Rs, Ys; solver = ACEfit.SKLEARN_BRR(), λ = 
             if length(Rs[key]) == 0 || length(Ys[key]) == 0
                 continue
             end
-            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, Γ = Γ, GC_switcher = GC_switcher)
+            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, reg = reg, GC_switcher = GC_switcher)
         end
     end
     if !isfitted(model)
@@ -219,10 +235,10 @@ function fit!(model::Density_Model, Rs, Ys; solver = ACEfit.SKLEARN_BRR(), λ = 
     # return model
 end
 
-function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, Γ = I, Mode = "D", multi_thread = false, GC_switcher = false)
+function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, reg = :id, Mode = "D", multi_thread = false, GC_switcher = false)
     rcut_on, r_cut_off, zcut = get_cutoff(model)
     Rs, Ys = split_data(frames, keys(model.Models); Mode = Mode, rcut_on = rcut_on, r_cut_off = r_cut_off, zcut = zcut)
-    fit!(model, Rs, Ys; solver = solver, λ = λ, Γ = Γ, Mode = Mode, multi_thread = multi_thread, GC_switcher = GC_switcher)
+    fit!(model, Rs, Ys; solver = solver, λ = λ, reg = reg, Mode = Mode, multi_thread = multi_thread, GC_switcher = GC_switcher)
 end
 
 # function fit_with_tuned_sample(DM, filenames, Ndata = 10000, η = 1.2; train_set = nothing, Mode = "D", refit = true)

@@ -1,6 +1,6 @@
 module IOInterface
 
-using DensityMatrixLearning
+using ACEdensitymatrix
 using Setfield, Polynomials4ML, EquivariantModels, Lux, Random, StaticArrays
 using Polynomials4ML: natural_indices
 using EquivariantModels: _get_cat_default

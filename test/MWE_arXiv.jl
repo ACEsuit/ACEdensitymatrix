@@ -1,4 +1,4 @@
-using DensityMatrixLearning, ACEfit, JLD2
+using ACEdensitymatrix, ACEfit, JLD2
 
 # Step 1: Specific a model, including hyper parameters that determine the size of the model and the orbital information
 degree = 4;
@@ -30,7 +30,7 @@ frames = identity.(frames);
 frames[1] # Detailed look at the structure of the data
 
 # Step 4: Fit the model
-fit!(Model, frames; solver = ACEfit.QR(), λ = 1e-4)
+fit!(Model, frames; solver = ACEfit.QR(), λ = 1e-4, reg = :smooth)
 
 # Step 5: Prediction
 # Read a frame from either ethanol, propanol, butanol, hexanol or heptanol

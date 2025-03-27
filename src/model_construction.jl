@@ -1,12 +1,12 @@
 module ModelConstruction
 
-using DensityMatrixLearning
+using ACEdensitymatrix
 using EquivariantModels, Polynomials4ML, Lux, Random, LinearAlgebra
 using EquivariantModels: simple_radial_basis, Radial_basis, append_layer, simple_extension
 using Polynomials4ML: ScalarPoly4MLBasis, lux, natural_indices
-using DecoratedParticles, StaticArrays
+using DecoratedParticles, StaticArrays, LinearAlgebra
 
-export AbstractModel, Density_Model, On_Model, Off_Model, get_L, get_norbs, isfitted, get_cutoff, filter_on, filter_off, eval_model, _get_cat_offsite
+export AbstractModel, Density_Model, On_Model, Off_Model, get_L, get_norbs, isfitted, get_cutoff, filter_on, filter_off, eval_model, _get_cat_offsite, reset_cutoff, regularizer
 
 # Should be removed after the next release of EquivariantModels
 import EquivariantModels: specnlm2spec1p
@@ -286,6 +286,39 @@ function sub_densitymatrix(x::NTuple{Len,Vector},L1::Int64,L2::Int64,n_orbs1::Un
     end
 
     return sym == true ? (D + D')/2 : D
+end
+
+function inv_lm(t::Int64)
+    l = 0
+    while t > (l+1)^2
+        l += 1
+    end
+    m = -l + (t - (l^2 + 1))
+    return (l, m)
+end
+spec2nlm(spec) = [ [ spec[i][1], inv_lm(spec[i][2])... ] for i = 1:length(spec) ]
+
+function regularizer(model::AbstractModel)
+    A2B = model.model.layers.AA2BB.layers
+    spec = model.model.layers.A.basis.spec
+    specs = model.model.layers.AA.basis.specs
+    specs = vcat(specs...)
+
+    nlm_set = spec2nlm(spec)
+
+    reg = []
+    for i = 1:length(A2B)
+        U = A2B[i].op
+        pos = A2B[i].pos
+        idx = specs[pos]
+
+        G = [ sum( sum(abs2.(nlm_set[idx[i][j]])) for j = 1:length(idx[i]) ) for i = 1:length(idx) ]
+        G = Diagonal( sqrt.(abs2.(norm.(U)) * G) )
+        # @show G
+        push!(reg, G)
+    end
+
+    return identity.(reg)
 end
 
 include("tuned_models.jl")

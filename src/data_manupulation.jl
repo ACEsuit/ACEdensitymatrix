@@ -1,7 +1,7 @@
 module Database
 
 using DecoratedParticles, StaticArrays, LinearAlgebra
-using DensityMatrixLearning
+using ACEdensitymatrix
 
 export apply_reorder, read_frame, translate_frame, get_state, assemble_Y, get_block, TrajectoryHDF5
 
