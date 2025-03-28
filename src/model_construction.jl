@@ -3,23 +3,23 @@ module ModelConstruction
 using ACEdensitymatrix
 using EquivariantModels, Polynomials4ML, Lux, Random, LinearAlgebra
 using EquivariantModels: simple_radial_basis, Radial_basis, append_layer, simple_extension
-using Polynomials4ML: ScalarPoly4MLBasis, lux, natural_indices
+using Polynomials4ML: AbstractP4MLBasis, lux, natural_indices
 using DecoratedParticles, StaticArrays, LinearAlgebra
 
 export AbstractModel, Density_Model, On_Model, Off_Model, get_L, get_norbs, isfitted, get_cutoff, filter_on, filter_off, eval_model, _get_cat_offsite, reset_cutoff, regularizer
 
 # Should be removed after the next release of EquivariantModels
-import EquivariantModels: specnlm2spec1p
-function specnlm2spec1p(spec_nlm)
-    spec1p = []
-    for spec_nlm_i in spec_nlm
-        push!(spec1p, spec_nlm_i...)
-        unique!(spec1p)
-    end
-    lmax = [ spec1p[i].l for i = 1:length(spec1p) ] |> maximum
-    nmax = [ spec1p[i].n for i = 1:length(spec1p) ] |> maximum
-    return spec1p, lmax, nmax + 1
-end
+# import EquivariantModels: specnlm2spec1p
+# function specnlm2spec1p(spec_nlm)
+#     spec1p = []
+#     for spec_nlm_i in spec_nlm
+#         push!(spec1p, spec_nlm_i...)
+#         unique!(spec1p)
+#     end
+#     lmax = [ spec1p[i].l for i = 1:length(spec1p) ] |> maximum
+#     nmax = [ spec1p[i].n for i = 1:length(spec1p) ] |> maximum
+#     return spec1p, lmax, nmax + 1
+# end
 
 abstract type AbstractModel end
 

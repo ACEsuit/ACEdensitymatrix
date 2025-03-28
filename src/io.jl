@@ -66,7 +66,7 @@ function read_dict(::Val{:On_Model}, dict::Dict)
     categories = identity.(dict["categories"])
 
     if haskey(dict, "Aspec") && haskey(dict, "AAspec")
-        Ylm = CYlmBasis(dict["maxdeg"])
+        Ylm = complex_sphericalharmonics(dict["maxdeg"])
         categories = dict["categories"]
         δs = CategoricalBasis(categories)
         l_δs = Polynomials4ML.lux(δs)
@@ -149,7 +149,7 @@ function read_dict(::Val{:Off_Model}, dict::Dict)
     categories = identity.(dict["categories"])
 
     if haskey(dict, "Aspec") && haskey(dict, "AAspec")
-        Ylm = CYlmBasis(dict["maxdeg"])
+        Ylm = complex_sphericalharmonics(dict["maxdeg"])
         categories = dict["categories"]
         δs = CategoricalBasis(categories)
         l_δs = Polynomials4ML.lux(δs)

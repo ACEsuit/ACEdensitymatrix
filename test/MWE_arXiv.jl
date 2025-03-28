@@ -2,7 +2,7 @@ using ACEdensitymatrix, ACEfit, JLD2
 
 # Step 1: Specify a model, including hyper parameters that determine the size of the model and the orbital information
 degree = 4;    # degree of the polynomial - resolution of the one particle basis
-order = 2;     # correlation order = body order + const
+order = 1;     # correlation order = body order + const
 rcut = 4.0;    # onsite and off site cutoff radius, which are chosen identically here but can be different
 zcut = 10.0;   # bond cutoff radius, which is only used in the offsite environment
 ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut), 
@@ -60,13 +60,12 @@ D_pred_2 = eval_model(Model, fm)
 D_pred_2 == D_pred # check that they are equivalent
 
 # Step 6: Model validation
-RMSE, RE, ME = validate_model(Model, frames_test)[[1,4,5]]
+RMSE, RE, ME = validate_model(Model, frames_test)[[1,4,5]] # RMSE, Relative Error, Maximum (element-wise) Error
 
 # Step 7: Save the model - for this we need JLD2
 save("test_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2", write_dict(Model))
 
 # Step 8: Load the model
-Model = load("test_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2") |> read_dict
-
-# Step 9: Model validation
-RMSE, RE, ME = validate_model(Model, frames_test)[[1,4,5]]
+Model_load = load("test_Models/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2") |> read_dict
+# Model validation - should be consistent with the previous one
+RMSE, RE, ME == validate_model(Model_load, frames_test)[[1,4,5]]

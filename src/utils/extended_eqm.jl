@@ -254,14 +254,13 @@ LuxCore.initialstates(rng::AbstractRNG, l::LinearLayer_loc) =
                     : (pool =  ArrayPool(FlexArray), ))
 ## =====================================================================================
 # fix something stupid in EQM
-import EquivariantModels: degord2spec
 using EquivariantModels: make_nlms_spec, getspec1idx, gensparse, getspecnlm, specnlm2spec1p
-function degord2spec(radial::Radial_basis; totaldegree, order, Lmax, catagories = [], filtered_extension = simple_extension, wL = 1, islong = true, rSH = false)
+function degord2spec_loc(radial::Radial_basis; totaldegree, order, Lmax, catagories = [], filtered_extension = simple_extension, wL = 1, islong = true, rSH = false)
    # Rn = radial.radial_basis(totaldegree)
    if typeof(totaldegree) == Int64
       totaldegree = repeat([totaldegree], order)
    end
-   Ylm = CYlmBasis(maximum(totaldegree))
+   Ylm = complex_sphericalharmonics(maximum(totaldegree))
 
    spec1p = make_nlms_spec(radial, Ylm; totaldegree = maximum(totaldegree), admissible = (br, by) -> br.n + wL * by.l <= maximum(totaldegree))
    spec1p = sort(spec1p, by = (x -> x.n + x.l * wL))
@@ -352,7 +351,7 @@ equivariant_model_loc(spec_nlm, radial::Radial_basis, L::Int64; categories=[], _
  
  # more constructors equivariant_model
 equivariant_model_loc(totdeg::Int64, ν::Int64, radial::Radial_basis, L1::Int64, L2::Int64; categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState = true, isreal = true, cat_extension = simple_extension, tuned_filter = nothing) = 
-      equivariant_model_loc(degord2spec(radial; totaldegree = totdeg, order = ν, Lmax = L1+L2, catagories = categories, filtered_extension = cat_extension, islong = islong)[2], radial, L1, L2; categories, _get_cat, AA2BB, d, group, isState, isreal, tuned_filter)
+      equivariant_model_loc(degord2spec_loc(radial; totaldegree = totdeg, order = ν, Lmax = L1+L2, catagories = categories, filtered_extension = cat_extension, islong = islong)[2], radial, L1, L2; categories, _get_cat, AA2BB, d, group, isState, isreal, tuned_filter)
 
  # With the _close function, the input could simply be an nnlllist (nlist,llist)
 
@@ -392,8 +391,8 @@ equivariant_operator(spec_nlm, radial::Radial_basis, L::Int64, n_orbs::Vector{In
     equivariant_operator(spec_nlm, radial, L, L, n_orbs, n_orbs; categories = categories, _get_cat = _get_cat, AA2BB = AA2BB, d = d, group = group, isState = isState, isreal = isreal, tuned_filter = tuned_filter)
 
 function equivariant_operator(totdeg::Union{Int64,Vector{Int64}}, ν::Int64, radial::Radial_basis, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState=true, isreal = true, cat_extension = simple_extension, tuned_filter = nothing)
-   # equivariant_operator(degord2spec(radial; totaldegree = totdeg, order = ν, Lmax=maximum(L1+L2), catagories = categories, islong = true)[2], radial, L1, L2, n_orbs1, n_orbs2; categories = categories, _get_cat = _get_cat, d = d, group = group, isState = isState, isreal = isreal)
-   equivariant_operator(degord2spec(radial; totaldegree = totdeg, order = ν, Lmax = L1+L2, catagories = categories, filtered_extension = cat_extension, islong = true)[2], radial, L1, L2, n_orbs1, n_orbs2; categories = categories, _get_cat = _get_cat, AA2BB = AA2BB, d = d, group = group, isState = isState, isreal = isreal, tuned_filter = tuned_filter)
+   # equivariant_operator(degord2spec_loc(radial; totaldegree = totdeg, order = ν, Lmax=maximum(L1+L2), catagories = categories, islong = true)[2], radial, L1, L2, n_orbs1, n_orbs2; categories = categories, _get_cat = _get_cat, d = d, group = group, isState = isState, isreal = isreal)
+   equivariant_operator(degord2spec_loc(radial; totaldegree = totdeg, order = ν, Lmax = L1+L2, catagories = categories, filtered_extension = cat_extension, islong = true)[2], radial, L1, L2, n_orbs1, n_orbs2; categories = categories, _get_cat = _get_cat, AA2BB = AA2BB, d = d, group = group, isState = isState, isreal = isreal, tuned_filter = tuned_filter)
 end
 
 equivariant_operator(totdeg::Union{Int64,Vector{Int64}}, ν::Int64, radial::Radial_basis, L::Int64, n_orbs::Vector{Int64}=ones(Int64,L+1); categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState=true, isreal = true, tuned_filter = nothing) = 
