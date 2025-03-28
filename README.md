@@ -2,17 +2,18 @@ This package is a `Julia` that contains the codes used for learning the density 
 
 [https://arxiv.org/abs/2503.08400](https://arxiv.org/abs/2503.08400).
 
+Notably, this package can also be used to learn any other equivariant operators, cf. the end of this README file. 
+
 # Get started 
 
-A part of the package is built on some packages under `ACEsuit` (e.g. `Polynomials4ML.jl`, `EquivariantModels` and `DecoratedParticles.jl`). As a result, the following commands
-
+A part of the package is built on some packages under `ACEsuit` (e.g. `Polynomials4ML.jl`, `EquivariantModels` and `DecoratedParticles.jl`). As a result, the following command
 ```julia
 ] registry add https://github.com/ACEsuit/ACEregistry.git
+```
+needs to be run in Julia REPL when setting up the Julia environment, and then
+```julia
 using ACEdensitymatrix
 ```
-
-need to be run in Julia REPL when setting up the Julia environment.
-
 # Data
 
 The data we used in this project is the DFT results of some typical molecules with the level of theory being DFT ωB97X-D/6-31G(d). We archive the data for reproducibility at [doi.org/10.18419/DARUS-4902](https://doi.org/10.18419/DARUS-4902), which can be read into Julia as
@@ -86,7 +87,7 @@ The model is to be tested on the chosen test set, and to return some errors
 # construct the test set
 RMSE, RMSE_MIN, RMSE_MAX, RE, ME, MAE = validate_model(Model_load, frames_test) # Element-wise RMSE, minimum/maximum RMSE over the test frames, relative error ||D-D_pred|| / ||D||, maximum element-wise error, and the MAE of the element-wise error
 ```
-Successfully running up to this line will give you an RMSE of 0.0012828423636450006 (~1E-2.9), which corresponds to the first orange point in Figure 4(c) of the manuscript. 
+Successfully running up to this line will give an RMSE of 0.0012828423636450006 (~1E-2.9), which corresponds to the first orange point in Figure 4(c) of the manuscript. 
 
 # Save and load the models
 The trained model oftentimes needs to be stored and reused. Here we used a JLD2 format, but in principle, any format that can store a dictionary with numbers and strings can be used
