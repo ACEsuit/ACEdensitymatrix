@@ -6,7 +6,7 @@ Notably, this package can also be used to learn any other equivariant operators,
 
 # Get started 
 
-A part of the package is built on some packages under `ACEsuit` (e.g. `Polynomials4ML.jl`, `EquivariantModels` and `DecoratedParticles.jl`). As a result, the following command
+To install packages under `ACEsuit` (e.g. `Polynomials4ML.jl`, `EquivariantModels.jl`, `DecoratedParticles.jl` and this one), the following command
 ```julia
 ] registry add https://github.com/ACEsuit/ACEregistry.git
 ```
@@ -14,6 +14,9 @@ needs to be run in Julia REPL when setting up the Julia environment, and then
 ```julia
 using ACEdensitymatrix
 ```
+
+NOTE: Currently, some dependencies of this packages only allow Julia 1.9 so please use Julia 1.9 to install and use this package, for the time being.
+
 # Data
 
 The data we used in this project is the DFT results of some typical molecules with the level of theory being DFT ωB97X-D/6-31G(d). We archive the data for reproducibility at [doi.org/10.18419/DARUS-4902](https://doi.org/10.18419/DARUS-4902), which can be read into Julia as
@@ -125,6 +128,6 @@ If you use this package in your research or project, please cite it as follows:
   title      = {ACEdensitymatrix.jl},
   author     = {Zhang, L et al.},
   year       = {2025},
-  url        = {https://github.com/zhanglw0521/ACEdensitymatrix}
+  url        = {https://github.com/ACEsuit/ACEdensitymatrix}
 }
 ```
