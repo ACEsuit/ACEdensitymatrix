@@ -6,16 +6,24 @@ Notably, this package can also be used to learn any other equivariant operators,
 
 # Get started 
 
-To install packages under `ACEsuit` (e.g. `Polynomials4ML.jl`, `EquivariantModels.jl`, `DecoratedParticles.jl` and this one), the following command
+Since this is a Julia package, it is a prerequisite to have Julia installed on your device, for which one may refer to the [Julialang site](https://julialang.org/downloads/). 
+
+NOTE: Currently, some dependencies of this package only allow Julia 1.9, so please use Julia 1.9 to install and use this package, for the time being.
+
+The package is registered under `ACEsuit`. To install packages under `ACEsuit`, the following command needs to be run in Julia REPL when setting up the Julia environment.
 ```julia
 ] registry add https://github.com/ACEsuit/ACEregistry.git
 ```
-needs to be run in Julia REPL when setting up the Julia environment, and then
+Then, the package is ready to be installed by running
+```julia
+] add ACEdensitymatrix
+```
+After that, the ACEdensitymatrix package can be used via
 ```julia
 using ACEdensitymatrix
 ```
 
-NOTE: Currently, some dependencies of this packages only allow Julia 1.9 so please use Julia 1.9 to install and use this package, for the time being.
+Hereafter, we provide a step by step tutorial showing how the package is to be used, from data reading, model construction/fitting/IO to prediction and model validation. We also provide a more comprehensive end-to-end script to run the whole tutorial at [test/MWE_arXiv.jl](https://github.com/ACEsuit/ACEdensitymatrix/blob/main/test/MWE_arXiv.jl).
 
 # Data
 
@@ -28,17 +36,19 @@ filenames = ["$routine/data/$(training_molecule[i])_new.h5" for i in 1:length(tr
 
 frames = [] # empty training set
 frames_test = [] # empty test set
+train_set = 0:2999 # frames picked from this molecule for training - this can be chosen differently for different molecules
+test_set = 9000:9999 # frames picked from this molecule for test - this can be chosen differently for different molecules
+
 for (i,fname) in enumerate(filenames) # loop for each training molecule
-    train_set = 0:2999 # frames picked from this molecule for training - this can be chosen differently for different molecules
-    test_set = 9000:9999 # frames picked from this molecule for test - this can be chosen differently for different molecules
     molecule = TrajectoryHDF5(fname)
     push!(frames,[ read_frame(molecule,Int(j)) for j in train_set]...) # constructing a training set with the chosen frames
     push!(frames_test,[ read_frame(molecule,Int(j)) for j in test_set]...) # constructing a test set with the chosen frames
 end
+
 frames[1]
 ```
 
-The last line allows one to view the structure of our data - the coordinates, the KS and overlap matrix, the eigenvectors(Coefficients), from which the density matrix can be deduced, and the metadata.
+The last line allows one to view the structure of our data - the coordinates, the KS and overlap matrix, the eigenvectors(Coefficients), from which the density matrix can be deduced, as well as the metadata.
 ```julia
 Dict{String, Array} with 7 entries:
   "Atomic numbers"   => [6, 1, 1, 1, 6, 1, 1, 6, 1, 1, 8, 1]
@@ -48,6 +58,7 @@ Dict{String, Array} with 7 entries:
   "Overlap"          => [1.0 0.219059 … 4.70417e-11 0.00027372; 0.219059 1.0 … 4.43876e-6 0.00479534; … ; 4.70417e-11 4.43876e-6 … 1.0 0.658292; 0.00027372 0.00479534 … 0.658292 1.0]
   "Kohn-Sham matrix" => [-10.2747 -2.45905 … -3.86501e-6 -0.0031578; -2.45905 -1.0391 … 0.00022585 -0.0114218; … ; -3.86501e-6 0.00022585 … -0.180854 -0.54048; -0.0031578 -0.0114218 … -0.54048 -0.507038]
 ```
+This is also to showcase what format of data is required to use this package. 
 
 # Model construction
 To construct the model, the model parameters should first be given
@@ -60,13 +71,14 @@ zcut = 10.0       # bond cutoff radial
 ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order, "rcut_on" => rcut, "rcut_off" => rcut, "zcut" => zcut),
                 6 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut_on" => rcut, "rcut_off" => rcut, "zcut" => zcut),
                 8 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut_on" => rcut, "rcut_off" => rcut, "zcut" => zcut) );
-                # This is a CHO model - For H, there are 2 s orbitals, and for C and O, there are 3 s orbitals, 2 p orbitals and 1 d orbital. 
+                # This is a CHO model - For H, there are 2 s orbitals, and for C and O, there are 3 s orbitals, 2 p orbitals and 1 d orbital.
+                # By adjusting the above input, it is possible to construct models for different basis sets and different elements.
 
 Model = Density_Model(ao_dict::Dict); # Construct the model
 ```
 
 # Training
-We use the QR solver in ACEfit.jl to perform an example fitting. 
+We use the QR solver in ACEfit.jl to perform an example fitting. Note that one may need to `add ACEfit` before running the following
 ```julia
 using ACEfit # To use the solver inside
 fit!(Model, frames; solver = ACEfit.QR(), λ = 1e-4, reg = :smooth)
@@ -103,8 +115,7 @@ save("YOUR_ROUTINE/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld
 Model_load = load("YOUR_ROUTINE/model_maxdeg$(degree)_ord$(order)_rcut$(rcut)_zcut$(zcut).jld2") |> read_dict
 RMSE, RMSE_MIN, RMSE_MAX, RE, ME, MAE = validate_model(Model_load, frames_test) # A consistent result will be obtained
 ```
-
-The file `test/MWE_arXiv.jl` gives a more comprehensive example of the above procedure, including how to train the model with frames from different molecules and make predictions about those molecules that were not even included in the training. 
+Note that one may need to `add JLD2` before running the code block above.
 
 # Remarks
 It is worth mentioning that the code in this package can not only be used to fit the density matrix, but can also be used to fit the KS matrix or any other equivariant operators of many-body systems, as long as they have the correct rotation symmetry. It also does not require a specific origination of the data. The only requirement is that the data should look like the above, having the coordinates of the particles, the necessary metadata (the orbital information, that gives rise to the correct equivariance), and of course, access to the target operator (say "operator"). Then to fit the operator of interest, simply make sure that the converted frame, as a dictionary shown above, has the field "operator" (this will mean that you will need to import and overwrite the `convert_frame` function) and then run the following when the fitting is performed:
