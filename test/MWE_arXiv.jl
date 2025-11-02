@@ -8,7 +8,8 @@ zcut = 10.0;   # bond cutoff radius, which is only used in the offsite environme
 ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut), 
                 6 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
                 8 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut) );
-                # This is a CHO model - H: 2S, C: 3S2P1D, O: 3S2P1D
+                # This is a CHO model - For H, there are 2 s orbitals, and for C and O, there are 3 s orbitals, 2 p orbitals and 1 d orbital.
+                # By adjusting the above input, it is possible to construct models for different basis sets and different elements.
 
 # Step 2: Construct a model of certain sizes and with randomize initialized parameters
 Model = Density_Model(ao_dict::Dict);
@@ -16,8 +17,8 @@ Model = Density_Model(ao_dict::Dict);
 # Step 3: Read the training and test data (frames of different molecules)
 
 routine = "data/new_datasets"
-training_molecule = ["propanol", "hexanol"]
-test_molecule = ["ethanol"]
+training_molecule = ["propanol", "hexanol"] # we will train the model with data points from propanol and hexanol
+test_molecule = ["ethanol"] # and then test on ethanol
 filenames = ["$routine/$(training_molecule[i])_new.h5" for i in 1:length(training_molecule)]
 testfilenames = ["$routine/$(test_molecule[i])_new.h5" for i in 1:length(test_molecule)]
 
@@ -38,7 +39,7 @@ for (i,fname) in enumerate(testfilenames)
     test_set = 0:99
     molecule = TrajectoryHDF5(fname)
     @show molecule
-    push!(frames_test,[ read_frame(molecule,Int(j)) for j in test_set]...) # constructing a training data set with Ndata frames for a single .h5 file
+    push!(frames_test,[ read_frame(molecule,Int(j)) for j in test_set]...) # constructing a test data set with Ndata frames for a single .h5 file
 end
 
 frames_test = identity.(frames_test);
@@ -52,7 +53,7 @@ fm = read_frame(TrajectoryHDF5("$routine/$(test_molecule[1])_new.h5"),1)
 
 # ``translate" the frame
 R, D, atomic_number, ao_labels, H, S, C = convert_frame(fm)["R"], convert_frame(fm)["D"], convert_frame(fm)["atomic_numbers"], convert_frame(fm)["ao_labels"], convert_frame(fm)["H"], convert_frame(fm)["S"], convert_frame(fm)["C"];
-D_pred = eval_model(Model, R, ao_labels, retraction =  D -> eigen_retraction(D, Int(sum(atomic_number)/2)))
+D_pred = eval_model(Model, R, ao_labels, retraction =  D -> eigen_retraction(D, Int(sum(atomic_number)/2))) # predicted density matrix
 D_pred - D # check the error
 
 # An alternative, though not recommended...
