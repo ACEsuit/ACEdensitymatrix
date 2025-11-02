@@ -233,6 +233,21 @@ function fit!(model::Density_Model, Rs, Ys; solver = ACEfit.SKLEARN_BRR(), λ = 
     # return model
 end
 
+"""
+    fit!(model::Density_Model, frames::Vector{Dict{String, Array}; solver, λ, reg, Mode)
+
+In line function fitting a Density_Model `model` (fitted or not) with the (new) training data `frame`
+
+# Arguments
+- `model`: Density_Model, A density matrix model
+- `frame`: A set of training data that requires some specific form
+- `solver`: Solver for solving a LS system that has to provide interface for the design matrix and RHS
+- ` λ`: Float64, Regularization parameter, coefficient of the regularizer
+- `reg`: Symbol, indicating type of regularizer; built in type is :reg and :smooth, identity and smooth priorer
+- `Mode`: String, Mode in the frame that needs to be fitted; default is "D", 
+          other possibility is "H" for Hamiltonian, "S" for the overlap, and other usage depending on the input frame
+
+"""
 function fit!(model::Density_Model,frames::Union{Dict{String, Array}, Vector{Dict{String, Array}}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, reg = :id, Mode = "D", multi_thread = false, GC_switcher = false)
     rcut_on, r_cut_off, zcut = get_cutoff(model)
     Rs, Ys = split_data(frames, keys(model.Models); Mode = Mode, rcut_on = rcut_on, r_cut_off = r_cut_off, zcut = zcut)

@@ -5,6 +5,27 @@ using ACEdensitymatrix
 
 export validate_model, validate_model_semifull, validate_model_full
 
+"""
+    validate_model(model::Density_Model, frames::Vector{Dict{String, Array}, Mode)
+
+Return different error measures of the Density_Model `model` on the test frames `frames`:
+when Mode = "D", it returns, in the following order, 
+
+RMSE: overall RMSE on all the frames
+RMSE_MIN: minimum RMSE on all the frames
+RMSE_MAX: maximum RMSE on all the frames
+RE: overall Relative error 
+ME: maximum error on all the elements in all the density matrix
+MAE: overall MAE on all the frames
+
+# Arguments
+- `model`: Density_Model, A density matrix model
+- `frames`: A set of training data that requires some specific form
+- `Mode`: String, Mode in the frame that needs to be fitted; default is "D", 
+          other possibility is "H" for Hamiltonian, "S" for the overlap, 
+          or other usage depending on the input frame
+
+"""
 function validate_model(MD, frames; Mode = "D")
     RMSE = 0
     MAE = 0

@@ -111,6 +111,23 @@ function classify_ao_dict_off(ao_dict::Dict{TP, Dict{String, Any}}) where TP
     return unique.(off_classes)
 end
 
+"""
+    Density_Model(ao_dict::Dict{TP, Dict{String, Any}}) where TP -> Density_Model
+
+# Arguments
+- `ao_dict`: a dictionary containing all the metadata needed for constructing a Density_Model
+             including chemical types, number of orbitals, and cutoffs
+
+# Examples
+ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut), 
+                6 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
+                8 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut) );
+                # This is a CHO model - For H, there are 2 s orbitals, and for C and O, there are 3 s orbitals, 2 p orbitals and 1 d orbital.
+                # By adjusting the above input, it is possible to construct models for different basis sets and different elements.
+
+model = Density_Model(ao_dict)
+"""
+
 function Density_Model(ao_dict::Dict{TP, Dict{String, Any}}) where TP # There is a potential risk that DM tries to convert an unknown type dictionary to a Density_Model
     Zs = collect(keys(ao_dict)) |> sort 
     on_classes = classify_ao_dict_on(ao_dict)
@@ -149,6 +166,20 @@ function Density_Model(ao_dict::Dict{TP, Dict{String, Any}}) where TP # There is
 
     return Density_Model{TP}(dict)
 end
+
+"""
+    eval_model(model::Density_Model, R::Vector{PState{T}}, ao_labels::Vector{String}; retraction::Function=identity)
+
+Evaluate model(R), the predicted value
+
+# Arguments
+- `model`: Density_Model, A density matrix model
+- `R`: Vector{PState{T}}, cf PState in DecoratedParticles.jl
+- `ao_labels`: Vector{String}, a vector containing atomic information of a system, with elements, e.g. "0 C 1p -1"
+- `retraction`: Function, mapping from a matrix to a matrix of the same size; 
+                It is used when one needs to project the density matrix onto the Grassmann Manifold
+
+"""
 
 function eval_model(model::Density_Model, R::Union{PState{T}, Vector{PState{T}}}, ao_labels::Union{Vector{String},Matrix{String}}; retraction::Function=identity) where {T}
     # R is a global configuration - a State or a vector of State objects
