@@ -8,8 +8,15 @@ zcut = 10.0;   # bond cutoff radius, which is only used in the offsite environme
 ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut), 
                 6 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
                 8 => Dict("n_orbs" => [3,2,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut) );
-                # This is a CHO model - For H, there are 2 s orbitals, and for C and O, there are 3 s orbitals, 2 p orbitals and 1 d orbital.
-                # By adjusting the above input, it is possible to construct models for different basis sets and different elements.
+                # This is a CHO model - For H, there are 2 s orbitals, and for C and O, there are 3 s orbitals, 2 p orbitals and 1 d orbital,
+                # corresponding to the 6-31G(d) basis set;
+                # By adjusting the above input, it is possible to construct models for different basis sets and different elements,
+                # say for instance 
+                # ao_dict = Dict( 1 => Dict("n_orbs" => [3,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut), 
+                #                 6 => Dict("n_orbs" => [5,4,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
+                #                 7 => Dict("n_orbs" => [5,4,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut),
+                #                 8 => Dict("n_orbs" => [5,4,1], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut) );
+                # will lead to a CHON model corresponds to the 6-311G(d,p) basis set
 
 # Step 2: Construct a model of certain sizes and with randomize initialized parameters
 Model = Density_Model(ao_dict::Dict);
