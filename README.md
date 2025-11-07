@@ -1,8 +1,8 @@
-This package is a `Julia` package that contains the codes used for learning the density matrices $D_{\mathrm{R}}$ for a given molecular configuration $\mathrm{R}$, using the equivariant Atomic Cluster Expansion (ACE) descriptors, which have the same symmetry as the density matrix and form a linearly complete set to represent the density matrix. In order to enforce the predicted density matrix to be a valid density for some systems, a retraction operator is applied afterwards to ensure the Grassmannianness of the density matrix. One of the goals of this package is to provide the reproducibility of the results in the following manuscript:
+This package is a `Julia` package that contains the codes used for learning the density matrices $D_{\mathrm{R}}$ for a given molecular configuration $\mathrm{R}$, using the equivariant Atomic Cluster Expansion (ACE) descriptors, which have the same symmetry as the density matrix and form a linearly complete set to represent the density matrix. In order to enforce the predicted density matrix to be a valid density for some systems, a retraction operator is applied afterwards to ensure the Grassmannianity of the density matrix. One of the goals of this package is to provide the reproducibility of the results in the following manuscript:
 
 [https://arxiv.org/abs/2503.08400](https://arxiv.org/abs/2503.08400).
 
-Notably, this package can also be used to learn any other equivariant operators, cf. the end of this README file. 
+Notably, this package can also be used to learn any other equivariant operators, for instance the Fock matrices (Hamiltonians) or the overlap matrices, cf. the end of this README file. 
 
 # Get started 
 
