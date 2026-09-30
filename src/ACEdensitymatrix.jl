@@ -4,6 +4,11 @@ using Reexport
 # Some useful transformations needed for the densitymatrixlearning project
 include("utils/transformations.jl")
 
+# Julia-1.9-compatible local adaptation of the GEPI Lie-algebra construction.
+# The associated vector-to-matrix transformations are included by
+# utils/transformations.jl.
+include("utils/gepi_couplings.jl")
+
 # Codes that should lie in ACEOperator.jl
 include("radial_basis.jl") 
 include("utils/extended_eqm.jl")
