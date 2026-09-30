@@ -33,6 +33,15 @@ jobs:
       - name: Cache Julia packages
         uses: julia-actions/cache@v2
 
+      - name: Add package registries
+        run: |
+          julia --project=. -e '
+            using Pkg
+            installed = Set(registry.name for registry in Pkg.Registry.reachable_registries())
+            "General" in installed || Pkg.Registry.add("General")
+            "ACE" in installed || Pkg.Registry.add(Pkg.RegistrySpec(url="https://github.com/ACEsuit/ACEregistry.git"))
+          '
+
       - name: Build package
         uses: julia-actions/julia-buildpkg@v1
 
