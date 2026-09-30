@@ -337,3 +337,7 @@ function eigen_retraction(D::Matrix, n_pairs::Int)
     @assert norm(retr_D' - retr_D, Inf) < 1e-10
     return retr_D
 end
+
+# Transform vector-valued irreducible couplings into the real,
+# matrix-valued convention used by the density-matrix models.
+include("coupling_transformation.jl")

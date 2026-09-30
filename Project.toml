@@ -2,6 +2,24 @@ name = "ACEdensitymatrix"
 uuid = "01d2a810-3755-443d-adc8-83bcf7da2e21"
 version = "0.1.0"
 
+[compat]
+ACEbase = "0.4"
+ACEfit = "0.3"
+DecoratedParticles = "0.0.7"
+EquivariantModels = "0.0.5"
+HDF5 = "0.17"
+JLD2 = "0.6"
+LinearOperators = "2"
+Lux = "0.5"
+LuxCore = "0.1"
+ObjectPools = "0.3"
+Polynomials4ML = "0.3"
+Reexport = "1"
+RepLieGroups = "0.0.4"
+Setfield = "1"
+StaticArrays = "1"
+julia = "1.9"
+
 [deps]
 ACEbase = "14bae519-eb20-449c-a949-9c58ed33163e"
 ACEfit = "ad31a8ef-59f5-4a01-b543-a85c2f73e95c"
@@ -21,3 +39,9 @@ RepLieGroups = "f07d36f2-91c4-427a-b67b-965fe5ebe1d2"
 Setfield = "efcf1570-3423-57d1-acb7-fd33fddbac46"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
