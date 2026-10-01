@@ -1,194 +1,108 @@
 function unpack(ao_labels::Union{Vector{String},Matrix{String}})
     atom_ids = Int64[]
-    # atom_symbols = String[]
     shells = Int64[]
     ls = Int64[]
     ms = Int64[]
-    letter_to_l = Dict{String, Int64}("s" => 0, "p" => 1, "d" => 2, "f" => 3)
+    letter_to_l = Dict{String,Int64}("s" => 0, "p" => 1, "d" => 2, "f" => 3)
+
     for label in ao_labels
-        atom_id, atom_symbol, orbital, m = split(label)
-
-        atom_id = parse(Int64, atom_id)
-        shell = parse(Int64, orbital[1:1])
-        l = letter_to_l[orbital[2:2]]
-        m = parse(Int64, m)
-
-        push!(atom_ids, atom_id)
-        # push!(atom_symbols, atom_symbol)
-        push!(shells, shell)
-        push!(ls, l)
-        push!(ms, m)
+        atom_id, _, orbital, m = split(label)
+        push!(atom_ids, parse(Int64, atom_id))
+        push!(shells, parse(Int64, orbital[1:1]))
+        push!(ls, letter_to_l[orbital[2:2]])
+        push!(ms, parse(Int64, m))
     end
 
-    # return atom_ids, atom_symbols, shells, ls, ms
     return atom_ids, shells, ls, ms
 end
 
 
-function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}, matrix::Matrix{Float64};
-        inverse=false, debug=false, bothsides=false)
+"""
+    apply_reorder(ao_labels, matrix; inverse=false, debug=false,
+                  bothsides=false, orbital_dim=2)
 
-    pos = typeof(ao_labels) == Vector{String} ? 1 : 2
+Reorder an orbital-indexed quantity using a direct permutation derived from
+the AO labels. The canonical order is `(atom, l, principal shell, m)`, so all
+shells with the same angular momentum are contiguous and each individual
+shell is ordered by increasing `m`.
 
-    # keep a copy of the reordering for debug
-    ref_order = Vector{Int64}(1:size(ao_labels, pos))
-
-    # unpack the labels
+By default orbitals index the columns of `matrix`. Set `orbital_dim=1` for a
+row-indexed coefficient matrix, or `bothsides=true` for a square AO matrix.
+`inverse=true` applies the inverse permutation.
+"""
+function apply_reorder(
+    ao_labels::Union{Vector{String},Matrix{String}},
+    matrix::AbstractMatrix;
+    inverse::Bool=false,
+    debug::Bool=false,
+    bothsides::Bool=false,
+    orbital_dim::Int=2,
+)
     atom_ids, shells, ls, ms = unpack(ao_labels)
+    permutation = sortperm(eachindex(atom_ids); by=i -> (
+        atom_ids[i], ls[i], shells[i], ms[i],
+    ))
+    order = inverse ? invperm(permutation) : permutation
+    n_orbitals = length(order)
 
-    rotated_matrix = copy(matrix)
-
-    # apply the transformations atom by atom
-    for atom_id in 0:maximum(atom_ids)
-
-        # here we assume that functions on the same atom are contiguous,
-        # and compute the range of the atom block. If atoms are not
-        # contiguous this must be changes
-        atom_mask = findall(x->x==atom_id, atom_ids)
-        atom_start = minimum(atom_mask)
-        atom_stop = maximum(atom_mask)
-        atom_range = atom_start:atom_stop
-
-        if inverse
-            # build the unitary transformation for bringing the same values
-            # of l close
-            Ul = zeros(Float64, size(atom_range, 1), size(atom_range, 1))
-            atom_ls = ls[atom_range]
-            for (i, j) in enumerate(sortperm(atom_ls))
-                Ul[i, j] = 1.0
-            end
-
-            ref_order[atom_range] = Ul * ref_order[atom_range]
-
-            Ul = Ul'
-            
-            rotated_matrix[atom_range, :] = Ul * rotated_matrix[atom_range, :]
-
-            if bothsides
-                rotated_matrix[:, atom_range] = rotated_matrix[:, atom_range] * Ul'
-            end
-        end
-
-
-        # build and apply the unitary transformation for ordering m by value
-        for shell in 1:maximum(shells[atom_range])
-            shell_mask = findall(x->x==shell, shells[atom_range])
-            shell_start = minimum(shell_mask)
-            shell_stop = maximum(shell_mask)
-            shell_range = atom_start+shell_start-1:atom_start+shell_stop-1
-
-            # note: the range starts from 1 as we skip the s orbitals
-            for l in 1:maximum(ls[shell_range])
-                l_mask = findall(x->x==l, ls[shell_range])
-                l_start = minimum(l_mask)
-                l_stop = maximum(l_mask)
-                l_range = atom_start+shell_start+l_start-2:atom_start+shell_start+l_stop-2
-
-                Um = zeros(Float64, size(l_range, 1), size(l_range, 1))
-                m = ms[l_range]
-                for (i, j) in enumerate(sortperm(m))
-                    Um[i, j] = 1.0
-                end
-
-                ref_order[l_range] = Um * ref_order[l_range]
-
-                if inverse
-                    Um = Um'
-                end
-                rotated_matrix[l_range, :] = Um * rotated_matrix[l_range, :]
-
-                if bothsides
-                    rotated_matrix[:, l_range] = rotated_matrix[:, l_range] * Um'
-                end
-            end
-        end
-
-        if !inverse
-            # build the unitary transformation for bringing the same values
-            # of l close
-            Ul = zeros(Float64, size(atom_range, 1), size(atom_range, 1))
-            atom_ls = ls[atom_range]
-            for (i, j) in enumerate(sortperm(atom_ls))
-                Ul[i, j] = 1.0
-            end
-
-            ref_order[atom_range] = Ul * ref_order[atom_range]
-
-            rotated_matrix[atom_range, :] = Ul * rotated_matrix[atom_range, :]
-
-            if bothsides
-                rotated_matrix[:, atom_range] = rotated_matrix[:, atom_range] * Ul'
-            end
-        end
+    reordered = if bothsides
+        size(matrix) == (n_orbitals, n_orbitals) || throw(DimensionMismatch(
+            "both matrix dimensions must equal the number of AO labels",
+        ))
+        matrix[order, order]
+    elseif orbital_dim == 1
+        size(matrix, 1) == n_orbitals || throw(DimensionMismatch(
+            "matrix row count must equal the number of AO labels",
+        ))
+        matrix[order, :]
+    elseif orbital_dim == 2
+        size(matrix, 2) == n_orbitals || throw(DimensionMismatch(
+            "matrix column count must equal the number of AO labels",
+        ))
+        matrix[:, order]
+    else
+        throw(ArgumentError("orbital_dim must be 1 or 2"))
     end
 
-    # print the reordered labels for debug
     if debug
-        for i in 1:size(ao_labels, 1)
-            println(ao_labels[i], "  ->  ", ao_labels[ref_order[i]])
+        labels = vec(ao_labels)
+        for (new_index, old_index) in enumerate(order)
+            println("$new_index <- $old_index: ", labels[old_index])
         end
     end
 
-    return rotated_matrix
+    return reordered
 end
 
 
-function apply_reorder(ao_labels::Union{Vector{String},Matrix{String}}; full_info=false)
+"""
+    apply_reorder(ao_labels; inverse=false, full_info=false, debug=false)
 
-    pos = typeof(ao_labels) == Vector{String} ? 1 : 2
-    # keep a copy of the reordering for debug
-    ref_order = Vector{Int64}(1:size(ao_labels, pos))
-
-    # unpack the labels
+Return the AO labels and their metadata in the same canonical order used by
+the matrix method. The metadata arrays are permuted together with the labels.
+"""
+function apply_reorder(
+    ao_labels::Union{Vector{String},Matrix{String}};
+    inverse::Bool=false,
+    full_info::Bool=false,
+    debug::Bool=false,
+)
     atom_ids, shells, ls, ms = unpack(ao_labels)
+    permutation = sortperm(eachindex(atom_ids); by=i -> (
+        atom_ids[i], ls[i], shells[i], ms[i],
+    ))
+    order = inverse ? invperm(permutation) : permutation
+    reordered_labels = vec(ao_labels)[order]
 
-    # apply the transformations atom by atom
-    for atom_id in 0:maximum(atom_ids)
-
-        # here we assume that functions on the same atom are contiguous,
-        # and compute the range of the atom block. If atoms are not
-        # contiguous this must be changes
-        atom_mask = findall(x->x==atom_id, atom_ids)
-        atom_start = minimum(atom_mask)
-        atom_stop = maximum(atom_mask)
-        atom_range = atom_start:atom_stop
-
-        # build and apply the unitary transformation for ordering m by value
-        for shell in 1:maximum(shells[atom_range])
-            shell_mask = findall(x->x==shell, shells[atom_range])
-            shell_start = minimum(shell_mask)
-            shell_stop = maximum(shell_mask)
-            shell_range = atom_start+shell_start-1:atom_start+shell_stop-1
-
-            # note: the range starts from 1 as we skip the s orbitals
-            for l in 1:maximum(ls[shell_range])
-                l_mask = findall(x->x==l, ls[shell_range])
-                l_start = minimum(l_mask)
-                l_stop = maximum(l_mask)
-                l_range = atom_start+shell_start+l_start-2:atom_start+shell_start+l_stop-2
-
-                Um = zeros(Float64, size(l_range, 1), size(l_range, 1))
-                m = ms[l_range]
-                for (i, j) in enumerate(sortperm(m))
-                    Um[i, j] = 1.0
-                end
-
-                ref_order[l_range] = Um * ref_order[l_range]
-            end
+    if debug
+        labels = vec(ao_labels)
+        for (new_index, old_index) in enumerate(order)
+            println("$new_index <- $old_index: ", labels[old_index])
         end
-
-        # build the unitary transformation for bringing the same values
-        # of l close
-        Ul = zeros(Float64, size(atom_range, 1), size(atom_range, 1))
-        atom_ls = ls[atom_range]
-        for (i, j) in enumerate(sortperm(atom_ls))
-            Ul[i, j] = 1.0
-        end
-
-        ref_order[atom_range] = Ul * ref_order[atom_range]
     end
 
-    return full_info ? (ao_labels[ref_order], atom_ids, ls, ms) : (ao_labels[ref_order], atom_ids)
+    if full_info
+        return reordered_labels, atom_ids[order], ls[order], ms[order]
+    end
+    return reordered_labels, atom_ids[order]
 end
-
-
