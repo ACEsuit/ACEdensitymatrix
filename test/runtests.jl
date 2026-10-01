@@ -6,4 +6,5 @@ using Test
     include("test_backend_equivalence.jl")
     include("test_sparse_evaluation.jl")
     include("test_explicit_spec_constructor.jl")
+    include("test_fitting.jl")
 end
