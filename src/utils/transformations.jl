@@ -4,7 +4,7 @@ using RepLieGroups.O3: ClebschGordan, wigner_D_indices, adjoint, Rot3DCoeffs, di
 import RepLieGroups.O3: _mrange
 import EquivariantModels: coco_dot
 
-export eigen_retraction, svd_retraction, flat, k2ij
+export eigen_retraction, svd_retraction, flat, flat!, k2ij
 
 # The transformation matrix from complex SHs to real SHs
 function ctran(L)
@@ -37,6 +37,29 @@ function flat(a)
         tmp[:,i] = vec(a[i])
     end
     return tmp
+end
+
+function flat!(destination::Matrix, first_row::Int, values)
+    size(destination, 2) == length(values) || throw(DimensionMismatch(
+        "the destination and values must have the same number of columns",
+    ))
+    isempty(values) && return destination
+
+    value_length = length(first(values))
+    first_row >= 1 || throw(BoundsError(destination, first_row))
+    first_row + value_length - 1 <= size(destination, 1) ||
+        throw(BoundsError(destination, first_row:(first_row + value_length - 1)))
+
+    destination_rows = size(destination, 1)
+    @inbounds for column in eachindex(values)
+        value = values[column]
+        length(value) == value_length || throw(DimensionMismatch(
+            "all values must have the same flattened length",
+        ))
+        destination_offset = first_row + (column - 1) * destination_rows
+        copyto!(destination, destination_offset, value, 1, value_length)
+    end
+    return destination
 end
 
 function k2ij(k, n, m)

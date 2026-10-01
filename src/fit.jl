@@ -34,7 +34,8 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     for (j,R) in enumerate(Rs)
         valset = partial_md(R,ps,st)[1]
         for (i, (l1,l2)) in enumerate(LLset)
-            A_all[i][(2l1+1)*(2l2+1)*(j-1)+1:(2l1+1)*(2l2+1)*j,:] = flat(valset[i])
+            first_row = (2l1 + 1) * (2l2 + 1) * (j - 1) + 1
+            flat!(A_all[i], first_row, valset[i])
         end
     end
 
@@ -48,39 +49,60 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
         println("Fitting the $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) blocks ...")
         println()
         
-        RMSE = 0
-
         # get the design matrix A for the (l1,l2) block, and delete the corresponding part in A_all
         A = popat!(A_all, 1)
         num = size(A)[2] # number of basis
 
         A = [A; λ*Γ[i]]
-        
-        for kk = 1 : size(model.ps.dot[i].W,1)
-            ii, jj = k2ij(kk, n_orbs1[l1+1], n_orbs2[l2+1])
-            # println("Fitting the ($ii,$jj)-th $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) block ...")
-            
-            Yij = [ get_Y(Ys[t], n_orbs1, n_orbs2, l1, l2, ii, jj) for t = 1:length(Ys) ]
-
-            # construct Y 
-            Y = zeros(Float64, length(Ys)*length(Yij[1]))
-            for k in 1:length(Ys)
-                Y[(k-1)*length(Yij[1])+1:k*length(Yij[1])] = Yij[k]
+        output_count = size(model.ps.dot[i].W, 1)
+        block_size = (2l1 + 1) * (2l2 + 1)
+        data_rows = length(Ys) * block_size
+        if solver isa ACEfit.QR && iszero(solver.lambda)
+            Y = zeros(Float64, data_rows + num, output_count)
+            for kk in 1:output_count
+                ii, jj = k2ij(kk, n_orbs1[l1+1], n_orbs2[l2+1])
+                for sample in eachindex(Ys)
+                    row_start = (sample - 1) * block_size + 1
+                    rows = row_start:(row_start + block_size - 1)
+                    Y[rows, kk] .= vec(get_Y(
+                        Ys[sample], n_orbs1, n_orbs2,
+                        l1, l2, ii, jj,
+                    ))
+                end
             end
-            Y = [Y; zeros(num)]
 
-            # solve for C[kk]
-            C = ACEfit.solve(solver, A, Y)["C"];
-            @set! model.ps.dot.$(layer_set[i]).W[kk,:] = C
-            # list of potential solvers: ACEfit: QR, LSQR, RRQR, SKLEARN_BRR, SKLEARN_ARD, BLR, TruncatedSVD...
-            
-            RMSE += norm((A*C-Y)[1:end-num])^2/(length(Y)-num)
+            # Solve all orbital pairs with one QR factorization and reuse the
+            # disposable augmented matrix as the factorization workspace.
+            A_data = copy(view(A, 1:data_rows, :))
+            C = qr!(A) \ Y
+            residual = A_data * C - view(Y, 1:data_rows, :)
+            model.ps.dot[i].W .= transpose(C)
+            RMSE = sqrt(sum(abs2, residual) / (data_rows * output_count))
+        else
+            # Preserve the established one-right-hand-side interface for
+            # solvers that do not support matrix-valued targets.
+            mean_squared_error = 0.0
+            for kk in 1:output_count
+                ii, jj = k2ij(kk, n_orbs1[l1+1], n_orbs2[l2+1])
+                Y = zeros(Float64, data_rows + num)
+                for sample in eachindex(Ys)
+                    row_start = (sample - 1) * block_size + 1
+                    rows = row_start:(row_start + block_size - 1)
+                    Y[rows] .= vec(get_Y(
+                        Ys[sample], n_orbs1, n_orbs2,
+                        l1, l2, ii, jj,
+                    ))
+                end
+                C = ACEfit.solve(solver, A, Y)["C"]
+                @set! model.ps.dot.$(layer_set[i]).W[kk, :] = C
+                mean_squared_error +=
+                    norm((A * C - Y)[1:data_rows])^2 / data_rows
+            end
+            RMSE = sqrt(mean_squared_error / output_count)
+            GC.gc()
         end
-        # println("RMSE = $(sqrt(RMSE/length(LLset)))")
-        println("RMSE = $(sqrt(RMSE/size(model.ps.dot[i].W,1)))")
+        println("RMSE = $RMSE")
         println()
-
-        GC.gc()
     end
     
     model = (TP <: On_Model) ? TP(model.model, model.ps, model.st, model.n_orbs, true) : TP(model.model, model.ps, model.st, model.n_orbs1, model.n_orbs2, true)
@@ -124,7 +146,8 @@ function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PS
     for (j,R) in enumerate(Rs)
         valset = partial_md(R,ps,st)[1]
         for (i, (l1,l2)) in enumerate(LLset)
-            A_all[i][(2l1+1)*(2l2+1)*(j-1)+1:(2l1+1)*(2l2+1)*j,:] = flat(valset[i])
+            first_row = (2l1 + 1) * (2l2 + 1) * (j - 1) + 1
+            flat!(A_all[i], first_row, valset[i])
         end
     end
     println("Finish constructing A")
@@ -215,7 +238,12 @@ function fit!(model::Density_Model, Rs, Ys; solver = ACEfit.SKLEARN_BRR(), λ = 
             if length(Rs[key]) == 0 || length(Ys[key]) == 0
                 continue
             end
-            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, reg = reg, GC_switcher = GC_switcher)
+            states = identity.(pop!(Rs, key))
+            targets = identity.(pop!(Ys, key))
+            model.Models[key] = fit!(
+                model.Models[key], states, targets;
+                solver=solver, λ=λ, reg=reg,
+            )
         end
     else
         for key in keys(model.Models)
@@ -224,7 +252,12 @@ function fit!(model::Density_Model, Rs, Ys; solver = ACEfit.SKLEARN_BRR(), λ = 
             if length(Rs[key]) == 0 || length(Ys[key]) == 0
                 continue
             end
-            model.Models[key] = fit!(model.Models[key], identity.(pop!(Rs,key)), assemble_Y( identity.(pop!(Ys,key)), get_norbs(model.Models[key])...); solver = solver, λ = λ, reg = reg, GC_switcher = GC_switcher)
+            states = identity.(pop!(Rs, key))
+            targets = identity.(pop!(Ys, key))
+            model.Models[key] = fit!(
+                model.Models[key], states, targets;
+                solver=solver, λ=λ, reg=reg,
+            )
         end
     end
     if !isfitted(model)
