@@ -1,6 +1,7 @@
 module Fitting
 
 using ACEdensitymatrix
+using ACEdensitymatrix.Database: get_Y
 using Setfield, LinearAlgebra, ACEfit, SparseArrays, DecoratedParticles, Lux, Random
 export fit!
 
