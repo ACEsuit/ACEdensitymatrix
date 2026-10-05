@@ -78,3 +78,75 @@ function fit_coeffs(train_vals, ref_vals, test_vals; λ=1e-14)
     target = test_vals .- ref_vals
     return fit_coeffs(design, target; λ=λ)
 end
+
+"""Return one-based atom indices and angular labels in canonical AO order"""
+function ao_block_labels(labels)
+    # Reorder labels and retain the metadata that defines each AO block
+    _, atom_ids, ls, ms = apply_reorder(labels; full_info=true)
+    return (
+        atom_ids=atom_ids .+ 1,
+        angular_momenta=ls,
+        magnetic_indices=ms
+    )
+end
+
+"""Return the radial multiplicity of every angular shell by species"""
+function infer_orbital_multiplicities(frame)
+    layout = ao_block_labels(frame["ao_labels"])
+    mults = Dict{Int,Vector{Int}}()
+    for (atom_idx, z) in enumerate(frame["atomic_numbers"])
+        # Count complete magnetic shells for this exact atom
+        atom_ls = layout.angular_momenta[layout.atom_ids .== atom_idx]
+        norbs = map(0:maximum(atom_ls)) do l
+            ncomp = count(==(l), atom_ls)
+            nmag = 2l + 1
+            ncomp % nmag == 0 || error("atom $atom_idx has an incomplete l=$l shell")
+            div(ncomp, nmag)
+        end
+        if haskey(mults, z)
+            # Equivalent species must use identical AO layouts
+            mults[z] == norbs || error("atoms of species $z use inconsistent AO bases")
+        else
+            mults[z] = norbs
+        end
+    end
+    return mults
+end
+
+"""Return the AO range containing every radial copy of angular momentum `l`"""
+function angular_orbital_range(norbs, l)
+    # Skip every lower-l shell in canonical AO order
+    first_idx = 1 + sum(norbs[k + 1] * (2k + 1) for k in 0:(l - 1); init=0)
+    n = norbs[l + 1] * (2l + 1)
+    return first_idx:(first_idx + n - 1)
+end
+
+"""Flatten matrix-valued ACE bases into one column per configuration"""
+function pack_basis_evaluations(vals)
+    isempty(vals) && throw(ArgumentError("at least one basis evaluation is required"))
+    nblocks = length(first(vals))
+    all(length(val) == nblocks for val in vals) ||
+        throw(DimensionMismatch("basis block counts are inconsistent"))
+
+    return map(1:nblocks) do block_idx
+        # Fix the element types and packed column length from the first sample
+        ref = vals[1][block_idx]
+        matrix_t = eltype(ref)
+        scalar_t = eltype(matrix_t)
+        col_len = length(ref) * length(matrix_t)
+        packed = Matrix{scalar_t}(undef, col_len, length(vals))
+
+        for sample_idx in eachindex(vals)
+            block = vals[sample_idx][block_idx]
+            eltype(block) === matrix_t ||
+                throw(DimensionMismatch("block $block_idx has inconsistent matrix types"))
+            length(block) == length(ref) ||
+                throw(DimensionMismatch("block $block_idx has inconsistent basis counts"))
+
+            # Static matrices are contiguous, so reinterpret and copy one column
+            offset = (sample_idx - 1) * col_len + 1
+            copyto!(packed, offset, reinterpret(scalar_t, block), 1, col_len)
+        end
+        packed
+    end
+end

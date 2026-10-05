@@ -8,4 +8,5 @@ using Test
     include("test_explicit_spec_constructor.jl")
     include("test_mwe.jl")
     include("test_reorder.jl")
+    include("extrapolation_experiments/test_EXT_utils.jl")
 end
