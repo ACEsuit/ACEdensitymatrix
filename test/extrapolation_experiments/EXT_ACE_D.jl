@@ -16,75 +16,45 @@
 # by Hermiticity, and retracted to an idempotent density with the correct trace
 # The reported RE is evaluated in the orthonormal AO basis
 
+module ACEDExtrapolation
+
 using ACEdensitymatrix
 using LinearAlgebra
 using Lux
 using Random
-using Statistics
 
 include(joinpath(@__DIR__, "EXT_utils.jl"))
-data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
 
-"""Training data for one exact atom-pair `(l1,l2)` density block"""
-struct DensityAngularFit
+export ACEDExtModel, design_mats, gram_mats, extrapolate!, frame2dict
+
+mutable struct AOBlock{T}
     l1::Int
     l2::Int
+    basis_idx::Int
     rows::UnitRange{Int}
     cols::UnitRange{Int}
-    train_basis::Matrix{Float64}
-    ref_basis::Vector{Float64}
-    train_targets::Vector{Matrix{Float64}}
-    ref_target::Matrix{Float64}
+    coeffs::Vector{T}
 end
 
-"""ACE evaluator and angular-block fits for one oriented atom pair"""
-struct DensityPairFit
+struct AtomBlock{B}
     atom_i::Int
     atom_j::Int
     pos_i::Vector{Int}
     pos_j::Vector{Int}
-    evaluator
-    ps
-    st
-    atom_filter
-    angular_fits::Vector{DensityAngularFit}
+    ao_blocks::Vector{B}
 end
 
-"""
-State of one direct-density rolling-window problem
-
-`pair_fits` contains a distinct fit for every selected atom pair, even when
-two pairs have the same chemical species
-"""
-mutable struct ACEDExtModel{m}
-    ace_model::m
-    pair_fits::Vector{DensityPairFit}
-    natoms::Int
-    d_size::Tuple{Int,Int}
-    nocc::Int
+mutable struct ACEDExtModel{T,B}
+    ace_model::Density_Model{T}
+    atom_blocks::Vector{B}
+    coeff_count::Int
+    trained::Bool
 end
 
-ACEDExtModel(ace_model) = ACEDExtModel(ace_model, DensityPairFit[], 0, (0, 0), 0)
-
-"""Return centered designs in pair-fit and angular-fit order"""
-function design_mats(model::ACEDExtModel)
-    return [center_design(fit.train_basis, fit.ref_basis)
-            for pair in model.pair_fits for fit in pair.angular_fits]
-end
-
-"""Return regularized Gram matrices in the same order as `design_mats`"""
-function gram_mats(model::ACEDExtModel; λ=0)
-    return [regularized_gram(design; λ=λ) for design in design_mats(model)]
-end
-
-"""Select one orientation of every exact atom pair"""
 function atom_pairs(z)
     pairs = Tuple{Int,Int}[]
     for i in eachindex(z), j in eachindex(z)
         zi, zj = z[i], z[j]
-
-        # Fit one orientation of each offsite pair
-        # Species order matches the keys in Density_Model.Models
         if i == j || zi < zj || (zi == zj && i < j)
             push!(pairs, (i, j))
         end
@@ -92,160 +62,152 @@ function atom_pairs(z)
     return pairs
 end
 
-"""
-Train every exact atom-pair and `(l1,l2)` block independently
-
-`ref_frame` supplies both the descriptor and density reference
-All frames must already have been processed by `convert_frame`
-"""
-function train!(model::ACEDExtModel, train_frames, ref_frame)
-    isempty(train_frames) && throw(ArgumentError("at least one interpolation frame is required"))
-    z = ref_frame["atomic_numbers"]
-    labels = ref_frame["ao_labels"]
-    for frame in train_frames
-        frame["atomic_numbers"] == z || error("atomic numbers change between training frames")
-        vec(frame["ao_labels"]) == vec(labels) || error("AO labels change between training frames")
-    end
-
-    # Global AO positions place each atom-pair block in the full density matrix
+function ACEDExtModel(dict, coeff_count; coupling_backend=:new)
+    coeff_count > 0 || throw(ArgumentError("coeff_count must be positive"))
+    ace_model = Density_Model(dict["species"]; coupling_backend=coupling_backend)
+    z = dict["atomic_numbers"]
+    labels = dict["ao_labels"]
     atom_ids = ao_block_labels(labels).atom_ids
-    empty!(model.pair_fits)
-    model.natoms = length(z)
-    model.d_size = size(ref_frame["D"])
-    model.nocc = Int(sum(z) / 2)
+    atom_blocks = AtomBlock{AOBlock{Float64}}[]
 
     for (atom_i, atom_j) in atom_pairs(z)
         zi, zj = z[atom_i], z[atom_j]
-        if atom_i == atom_j
-            # Onsite environments are centered on one atom
-            ace = model.ace_model.Models[zi]
-            atom_filter = filter_on(rcut)
-        else
-            # Offsite environments are centered on a bond and use zcut
-            ace = model.ace_model.Models[(zi, zj)]
-            atom_filter = filter_off(rcut, zcut)
-        end
-
-        # The first five Lux layers output the equivariant ACE basis
-        # No fitted linear readout is used as a descriptor
-        evaluator = Chain([ace.model.layers[layer] for layer in 1:5]...)
-        ps, st = Lux.setup(MersenneTwister(1234), evaluator)
-
-        # Evaluate every required environment once
-        # The final packed column is B_ref and earlier columns align with D_i
-        desc_frames = [train_frames; [ref_frame]]
-        vals = map(desc_frames) do frame
-            env = get_state(frame["R"], atom_i, atom_j; atom_filter=atom_filter)
-            evaluator(env, ps, st)[1]
-        end
-        basis = pack_basis_evaluations(vals)
-        d_blocks = [get_block(frame["D"], atom_i, atom_j, frame["ao_labels"])
-                    for frame in train_frames]
-        d_ref_block = get_block(ref_frame["D"], atom_i, atom_j, ref_frame["ao_labels"])
-
-        # ACE returns one matrix-valued basis vector for every `(l1,l2)` block
-        # Blocks follow this nested-loop order
+        ace = atom_i == atom_j ? ace_model.Models[zi] : ace_model.Models[(zi, zj)]
         l1max, l2max = get_L(ace)
         norb1, norb2 = get_norbs(ace)
-        l_blocks = [(l1, l2) for l1 in 0:l1max for l2 in 0:l2max]
-        length(basis) == length(l_blocks) ||
-            error("basis and angular-block counts disagree for atoms $atom_i and $atom_j")
+        ao_blocks = AOBlock{Float64}[]
 
-        angular_fits = DensityAngularFit[]
-        ntrain = length(train_frames)
-        for (block_idx, (l1, l2)) in enumerate(l_blocks)
-            # Each exact atom-pair and `(l1,l2)` block gets its own coefficients
+        for (basis_idx, (l1, l2)) in enumerate((l1, l2) for l1 in 0:l1max for l2 in 0:l2max)
             rows = angular_orbital_range(norb1, l1)
             cols = angular_orbital_range(norb2, l2)
-            block = basis[block_idx]
-            train_basis = Matrix{Float64}(view(block, :, 1:ntrain))
-            ref_basis = Vector{Float64}(view(block, :, ntrain + 1))
-            train_targets = [Matrix{Float64}(view(d, rows, cols)) for d in d_blocks]
-            ref_target = Matrix{Float64}(view(d_ref_block, rows, cols))
-            push!(angular_fits, DensityAngularFit(l1, l2, rows, cols, train_basis, ref_basis,
-                                                  train_targets, ref_target))
+            push!(ao_blocks, AOBlock(l1, l2, basis_idx, rows, cols,
+                                     zeros(Float64, coeff_count)))
         end
 
         pos_i = findall(==(atom_i), atom_ids)
         pos_j = findall(==(atom_j), atom_ids)
-        push!(model.pair_fits, DensityPairFit(atom_i, atom_j, pos_i, pos_j, evaluator,
-                                              ps, st, atom_filter, angular_fits))
+        push!(atom_blocks, AtomBlock(atom_i, atom_j, pos_i, pos_j, ao_blocks))
     end
-    return model
+    return ACEDExtModel(ace_model, atom_blocks, coeff_count, false)
 end
 
-"""Symmetrize onsite blocks and fill omitted reverse offsite blocks"""
-function complete_hermitian!(d, pair_fits, natoms)
-    for atom in 1:natoms
-        pos = only(pair.pos_i for pair in pair_fits if pair.atom_i == atom && pair.atom_j == atom)
-        block = view(d, pos, pos)
-        block_copy = copy(block)
+function basis_values(model::ACEDExtModel, frames)
+    z = first(frames)["atomic_numbers"]
+    rcut_on, rcut_off, zcut = get_cutoff(model.ace_model)
 
-        # Independent `(l1,l2)` and `(l2,l1)` fits need not be transposes
-        block .= (block_copy .+ block_copy') ./ 2
+    return map(model.atom_blocks) do atom
+        atom_i, atom_j = atom.atom_i, atom.atom_j
+        zi, zj = z[atom_i], z[atom_j]
+        if atom_i == atom_j
+            ace = model.ace_model.Models[zi]
+            atom_filter = filter_on(rcut_on)
+        else
+            ace = model.ace_model.Models[(zi, zj)]
+            atom_filter = filter_off(rcut_off, zcut)
+        end
+
+        evaluator = Chain([ace.model.layers[layer] for layer in 1:5]...)
+        ps, st = Lux.setup(MersenneTwister(1234), evaluator)
+        vals = map(frames) do frame
+            env = get_state(frame["R"], atom_i, atom_j; atom_filter=atom_filter)
+            evaluator(env, ps, st)[1]
+        end
+        basis = pack_basis_evaluations(vals)
+        length(basis) == length(atom.ao_blocks) ||
+            error("basis and AO-block counts disagree for atoms $atom_i and $atom_j")
+        basis
+    end
+end
+
+function design_mats(model::ACEDExtModel, train_frames, ref_frame)
+    isempty(train_frames) && throw(ArgumentError("at least one interpolation frame is required"))
+    ntrain = length(train_frames)
+    basis = basis_values(model, [train_frames; [ref_frame]])
+    return [center_design(view(blocks[ao.basis_idx], :, 1:ntrain),
+                          view(blocks[ao.basis_idx], :, ntrain + 1))
+            for (atom, blocks) in zip(model.atom_blocks, basis) for ao in atom.ao_blocks]
+end
+
+gram_mats(model::ACEDExtModel, train_frames, ref_frame; λ=0) =
+    [regularized_gram(design; λ=λ) for design in design_mats(model, train_frames, ref_frame)]
+
+function complete_hermitian!(d, atom_blocks, natoms)
+    for atom in 1:natoms
+        pos = only(block.pos_i for block in atom_blocks
+                   if block.atom_i == atom && block.atom_j == atom)
+        onsite = view(d, pos, pos)
+        onsite .= (onsite .+ onsite') ./ 2
     end
 
     for atom_i in 1:(natoms - 1), atom_j in (atom_i + 1):natoms
-        fwd = findfirst(pair -> pair.atom_i == atom_i && pair.atom_j == atom_j, pair_fits)
-        rev = findfirst(pair -> pair.atom_i == atom_j && pair.atom_j == atom_i, pair_fits)
+        fwd = findfirst(block -> block.atom_i == atom_i && block.atom_j == atom_j, atom_blocks)
+        rev = findfirst(block -> block.atom_i == atom_j && block.atom_j == atom_i, atom_blocks)
         xor(isnothing(fwd), isnothing(rev)) ||
             error("expected exactly one fitted orientation for atoms $atom_i and $atom_j")
-        pair = pair_fits[something(fwd, rev)]
-        d[pair.pos_j, pair.pos_i] .= d[pair.pos_i, pair.pos_j]'
+        block = atom_blocks[something(fwd, rev)]
+        d[block.pos_j, block.pos_i] .= d[block.pos_i, block.pos_j]'
     end
     return d
 end
 
-"""Evaluate one target frame and return its retracted density and errors"""
-function test(model::ACEDExtModel, frame; λ=1e-14)
-    # Fill the global density one atom-pair block at a time
-    # Reverse offsite blocks remain zero until Hermitian completion
-    d_pred = zeros(Float64, model.d_size)
+function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame; λ=1e-14)
+    length(train_frames) == model.coeff_count ||
+        throw(DimensionMismatch("training-frame count does not match coeff_count"))
 
-    for pair in model.pair_fits
-        # Reuse the same partial Lux chain and parameters used during training
-        env = get_state(frame["R"], pair.atom_i, pair.atom_j; atom_filter=pair.atom_filter)
-        val = pair.evaluator(env, pair.ps, pair.st)[1]
-        test_basis = pack_basis_evaluations([val])
-        d_block = zeros(Float64, length(pair.pos_i), length(pair.pos_j))
+    ntrain = length(train_frames)
+    basis = basis_values(model, [train_frames; [ref_frame, test_frame]])
+    coeff_sets = Vector{Vector{Vector{Float64}}}(undef, length(model.atom_blocks))
+    d_raw = zeros(Float64, size(test_frame["D"]))
 
-        for (block_idx, fit) in enumerate(pair.angular_fits)
-            # Coefficients are local to one exact atom pair and one `(l1,l2)` block
-            coeffs = fit_coeffs(fit.train_basis, fit.ref_basis,
-                                view(test_basis[block_idx], :, 1); λ=λ)
-            dest = view(d_block, fit.rows, fit.cols)
-            dest .= fit.ref_target
-            for (coeff, target) in zip(coeffs, fit.train_targets)
-                dest .+= coeff .* (target .- fit.ref_target)
+    for (atom_idx, (atom, blocks)) in enumerate(zip(model.atom_blocks, basis))
+        d_train = [get_block(frame["D"], atom.atom_i, atom.atom_j, frame["ao_labels"])
+                   for frame in train_frames]
+        d_ref = get_block(ref_frame["D"], atom.atom_i, atom.atom_j, ref_frame["ao_labels"])
+        d_block = zeros(Float64, length(atom.pos_i), length(atom.pos_j))
+        coeff_sets[atom_idx] = Vector{Float64}[]
+
+        for ao in atom.ao_blocks
+            block = blocks[ao.basis_idx]
+            coeffs = fit_coeffs(view(block, :, 1:ntrain), view(block, :, ntrain + 1),
+                                view(block, :, ntrain + 2); λ=λ)
+            push!(coeff_sets[atom_idx], coeffs)
+
+            ref_target = view(d_ref, ao.rows, ao.cols)
+            dest = view(d_block, ao.rows, ao.cols)
+            dest .= ref_target
+            for (coeff, d) in zip(coeffs, d_train)
+                dest .+= coeff .* (view(d, ao.rows, ao.cols) .- ref_target)
             end
         end
-        d_pred[pair.pos_i, pair.pos_j] .= d_block
+        d_raw[atom.pos_i, atom.pos_j] .= d_block
     end
 
-    complete_hermitian!(d_pred, model.pair_fits, model.natoms)
-    d_ref = frame["D"]
-    raw_re = norm(d_pred - d_ref) / norm(d_ref)
+    complete_hermitian!(d_raw, model.atom_blocks, length(test_frame["atomic_numbers"]))
+    for (atom, coeffs) in zip(model.atom_blocks, coeff_sets)
+        for (ao, block_coeffs) in zip(atom.ao_blocks, coeffs)
+            ao.coeffs .= block_coeffs
+        end
+    end
+    model.trained = true
 
-    # Replace the spectrum by the correct occupied and unoccupied eigenvalues
-    # while retaining the predicted eigenspace
-    d_ret = eigen_retraction(d_pred, model.nocc)
-
-    # Map the orthogonal-basis density difference back to the AO basis
-    sinv_sqrt = frame["S"]^(-0.5)
+    nocc = Int(sum(test_frame["atomic_numbers"]) / 2)
+    d_pred = eigen_retraction(d_raw, nocc)
+    sinv_sqrt = test_frame["S"]^(-0.5)
+    d_ref = test_frame["D"]
     d_ref_ao = sinv_sqrt * d_ref * sinv_sqrt
-    diff_ao = sinv_sqrt * (d_ret - d_ref) * sinv_sqrt
+    diff_ao = sinv_sqrt * (d_pred - d_ref) * sinv_sqrt
     re = norm(diff_ao) / norm(d_ref_ao)
-
-    return (re=re, raw_re=raw_re, d_pred=d_pred, d_ret=d_ret)
+    return (re=re, d_pred=d_pred)
 end
 
-"""
-Run `nwindows` rolling predictions
+end
 
-Trajectory indices are zero-based in the printed output
-For `q=20`, target 20 uses frames 0:18 for interpolation and frame 19 as the
-reference, while the default run predicts targets 20:99
-"""
+using .ACEDExtrapolation
+using ACEdensitymatrix
+using Statistics
+
+data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
+
 nu = 2
 degree = 3
 q = 20
@@ -254,43 +216,21 @@ nwindows = 80
 rcut = 6.5
 zcut = 10.0
 
-# q > 1 || error("q must exceed one")
-# nwindows > 0 || error("nwindows must be positive")
-# λ >= 0 || error("λ must be nonnegative")
-
-# Load each required frame once
-# Vector position `i+1` corresponds to zero-based trajectory frame i
 last_idx = q + nwindows - 1
 trajectory = TrajectoryHDF5(data_file)
 frames = [convert_frame(read_frame(trajectory, i)) for i in 0:last_idx]
 close(trajectory.file)
 
-# Construct the species-level ACE model once and reuse it across windows
-multiplicities = infer_orbital_multiplicities(first(frames))
-dictionary = Dict(
-    z_atom => Dict{String,Any}(
-        "n_orbs" => norbs,
-        "maxdeg" => degree,
-        "ord" => nu,
-        "rcut" => rcut,
-        "zcut" => zcut
-    ) for (z_atom, norbs) in multiplicities
-)
-ace_model = Density_Model(dictionary; coupling_backend=:new)
+dictionary = frame2dict(first(frames); nu=nu, degree=degree, rcut=rcut, zcut=zcut)
+model = ACEDExtModel(dictionary, q - 1; coupling_backend=:new)
 
 errors = Float64[]
 for test_idx in q:last_idx
-    # q preceding frames = q-1 interpolation frames plus one reference frame
-    model = ACEDExtModel(ace_model)
     train_idxs = (test_idx - q):(test_idx - 2)
     ref_idx = test_idx - 1
-
-    # Train
     train_frames = [frames[i + 1] for i in train_idxs]
-    train!(model, train_frames, frames[ref_idx + 1])
-
-    # Test
-    result = test(model, frames[test_idx + 1]; λ=λ)
+    result = extrapolate!(model, train_frames, frames[ref_idx + 1],
+                          frames[test_idx + 1]; λ=λ)
     push!(errors, result.re)
     println("frame=$test_idx RE=$(result.re)")
 end
