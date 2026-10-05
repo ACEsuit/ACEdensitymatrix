@@ -1,27 +1,12 @@
 
-include("../../src/utils/hdf5.jl")
+using ACEdensitymatrix
 using LinearAlgebra
+using Statistics
 
-"""Grassmann logarithm."""
-function grassmann_log(c, c0)
-    psi, s, r = svd(c' * c0, full=false)
-    cstar = c * psi * r'
-    L = (I(size(c, 1)) - c0 * c0') * cstar
-    u, s, v = svd(L, full=false)
-    arcsin_s = diagm(asin.(s))
-    return u * arcsin_s * v'
-end
-
-"""Grassmann exponential."""
-function grassmann_exp(gamma, c0)
-    q, s, v = svd(gamma, full=false)
-    sin_s = diagm(sin.(s))
-    cos_s = diagm(cos.(s))
-    return c0 * v * cos_s * v' + q * sin_s * v'
-end
+include(joinpath(@__DIR__, "EXT_utils.jl"))
 
 mutable struct GExtModel
-    A::Matrix
+    𝔹::Matrix # design matrix - evaluation of the ACE basis
     gammas::Array
     gamma_ref::Matrix
     descr_ref::Vector
@@ -34,24 +19,13 @@ mutable struct GExtModel
     end
 end
 
-mutable struct NewModel
-    A::Matrix
-    Ds::Array
-    D_ref::Matrix
-    B_ref::Vector
-    𝔹::Matrix
+"""Return the centered HCore design matrix stored by `train!`"""
+design_mat(model::GExtModel) = model.𝔹
 
-    function NewModel()
-        new(Matrix{Float64}(undef, 0, 0),
-            Array{Float64}(undef, 0, 0, 0),
-            Matrix{Float64}(undef, 0, 0),
-            Vector{Float64}(undef, 0),
-            Matrix{Float64}{undef, 0, 0} )
-    end
-end
+"""Return the regularized Gram matrix of the stored HCore design"""
+gram_mat(model::GExtModel; λ=0) = regularized_gram(design_mat(model); λ=λ)
 
-function train!(model::GExtModel, traj, training_set, ref_index, c0; eps=1e-4)
-    q = length(training_set)
+function train!(model::GExtModel, traj, training_set, ref_index, c0)
     gammas = []
 
     frame_ref = read_frame(traj, ref_index)
@@ -62,19 +36,15 @@ function train!(model::GExtModel, traj, training_set, ref_index, c0; eps=1e-4)
     c = sqrt_s * c_
     model.gamma_ref = grassmann_log(c, c0)
 
-    model.A = similar(model.descr_ref, (q, q))
+    training_frames = [read_frame(traj, i) for i in training_set]
+    training_descrs = [
+        vec(frame["Core Hamiltonian"]) for frame in training_frames
+    ]
+    model.𝔹 = center_design(hcat(training_descrs...), model.descr_ref)
 
-    for (ii, i) in enumerate(training_set)
-        frame_i = read_frame(traj, i)
+    for ii in eachindex(training_frames)
+        frame_i = training_frames[ii]
         s = frame_i["Overlap"]
-        descr_i = vec(frame_i["Core Hamiltonian"])
-
-        for (jj, j) in enumerate(training_set)
-            frame_j = read_frame(traj, j)
-            descr_j = vec(frame_j["Core Hamiltonian"])
-            model.A[ii, jj] = dot(descr_i - model.descr_ref, descr_j - model.descr_ref)
-        end
-        model.A[ii, ii] += eps^2
 
         c_ = frame_i["Coefficients"]'
         c = s^0.5 * c_
@@ -83,58 +53,17 @@ function train!(model::GExtModel, traj, training_set, ref_index, c0; eps=1e-4)
 
     end
     model.gammas = gammas
+    return training_descrs
 end
 
-function train_new!(model::GExtModel, traj, training_set, ref_index, c0; eps=1e-4)
-    q = length(training_set)
-    gammas = []
-
-    frame_ref = read_frame(traj, ref_index)
-    model.descr_ref = vec(frame_ref["Core Hamiltonian"])
-    s = frame_ref["Overlap"]
-    c_ = frame_ref["Coefficients"]'
-    sqrt_s = s^0.5
-    c = sqrt_s * c_
-    model.gamma_ref = grassmann_log(c, c0)
-
-    model.A = similar(model.descr_ref, (q, q))
-
-    for (ii, i) in enumerate(training_set)
-        frame_i = read_frame(traj, i)
-        s = frame_i["Overlap"]
-        descr_i = vec(frame_i["Core Hamiltonian"]) # This is to be changed: replaced with the evaluation of the ace basis
-
-        for (jj, j) in enumerate(training_set)
-            frame_j = read_frame(traj, j)
-            descr_j = vec(frame_j["Core Hamiltonian"]) # Same as above
-            model.A[ii, jj] = dot(descr_i - model.descr_ref, descr_j - model.descr_ref)
-        end
-        model.A[ii, ii] += eps^2
-
-        c_ = frame_i["Coefficients"]'
-        c = s^0.5 * c_
-        gamma = grassmann_log(c, c0)
-        push!(gammas, gamma)
-
-    end
-    model.gammas = gammas
-end
-
-function test(model::GExtModel, traj, training_set, ref_index, test_set, c0)
+function test(model::GExtModel, traj, training_descrs, test_set, c0; λ=(1.1e-5)^2)
     errors = []
-    q = length(training_set)
+    q = length(training_descrs)
     for i in test_set
         frame_i = read_frame(traj, i)
         descr_i = vec(frame_i["Core Hamiltonian"])
-        b = similar(descr_i, q)
-
-        for (jj, j) in enumerate(training_set)
-            frame_j = read_frame(traj, j)
-            descr_j = vec(frame_j["Core Hamiltonian"])
-            b[jj] = dot(descr_i - model.descr_ref, descr_j - model.descr_ref)
-        end
-
-        a = model.A \ b
+        target = descr_i - model.descr_ref
+        a = fit_coeffs(design_mat(model), target; λ=λ)
 
         guess_gamma = (1.0 - sum(a))*copy(model.gamma_ref)
         for j in 1:q
@@ -160,7 +89,6 @@ qmax = 20
 frame_max = 100
 
 traj = TrajectoryHDF5("data/new_datasets/oxirane.h5")
-info = read_info(traj)
 frame_ref = read_frame(traj, 0)
 s0 = frame_ref["Overlap"]
 c0_ = frame_ref["Coefficients"]'
@@ -168,25 +96,25 @@ c0 = s0^0.5 * c0_
 
 qset = 20:5:qmax
 errors =zeros(length(qset))
+frame_errors = [Float64[] for _ in qset]
 
 for (k,q) in enumerate(qset)
-    for frame_no in qmax+1:frame_max
+    for frame_no in qmax:frame_max-1
         # start = 0
-        training_set = frame_no-q-1:frame_no-2
+        training_set = frame_no-q:frame_no-2
         ref_index = frame_no-1
         test_set = frame_no:frame_no
         # tangent point for the Grassmann mappings
         
         model = GExtModel()
 
-        train!(model, traj, training_set, ref_index, c0)
-        error = test(model, traj, training_set, ref_index, test_set, c0)[1]
+        training_descrs = train!(model, traj, training_set, ref_index, c0)
+        error = test(model, traj, training_descrs, test_set, c0)[1]
         @show error
-        errors[k] += error
+        push!(frame_errors[k], error)
     end
+    errors[k] = mean(frame_errors[k])
 end
-
-errors = errors ./ (frame_max - 1 - qmax)
 
 @eval using Plots
 Plots.plot(qset, errors)
