@@ -61,6 +61,12 @@ include(joinpath(@__DIR__, "EXT_utils.jl"))
             1 => [1],
             6 => [2, 1],
         )
+
+        meta = frame2meta(frame)
+        @test meta.atomic_numbers == [1, 6]
+        @test meta.ao_labels == labels
+        @test meta.species == [1, 6]
+        @test meta.n_orbs == [[1], [2, 1]]
         @test angular_orbital_range([2, 1], 0) == 1:2
         @test angular_orbital_range([2, 1], 1) == 3:5
     end

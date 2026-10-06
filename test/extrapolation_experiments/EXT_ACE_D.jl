@@ -25,7 +25,7 @@ using Random
 
 include(joinpath(@__DIR__, "EXT_utils.jl"))
 
-export ACEDExtModel, design_mats, gram_mats, extrapolate!, frame2dict
+export ACEDExtModel, design_mats, gram_mats, extrapolate!, training_size, frame2meta
 
 mutable struct AOBlock{T}
     l1::Int
@@ -47,9 +47,11 @@ end
 mutable struct ACEDExtModel{T,B}
     ace_model::Density_Model{T}
     atom_blocks::Vector{B}
-    coeff_count::Int
     trained::Bool
 end
+
+training_size(model::ACEDExtModel) = model.trained ?
+    length(model.atom_blocks[1].ao_blocks[1].coeffs) : "model has not been trained"
 
 function atom_pairs(z)
     pairs = Tuple{Int,Int}[]
@@ -62,11 +64,10 @@ function atom_pairs(z)
     return pairs
 end
 
-function ACEDExtModel(dict, coeff_count; coupling_backend=:new)
-    coeff_count > 0 || throw(ArgumentError("coeff_count must be positive"))
-    ace_model = Density_Model(dict["species"]; coupling_backend=coupling_backend)
-    z = dict["atomic_numbers"]
-    labels = dict["ao_labels"]
+function ACEDExtModel(model_spec; coupling_backend=:new)
+    ace_model = Density_Model(model_spec["species"]; coupling_backend=coupling_backend)
+    z = model_spec["atomic_numbers"]
+    labels = model_spec["ao_labels"]
     atom_ids = ao_block_labels(labels).atom_ids
     atom_blocks = AtomBlock{AOBlock{Float64}}[]
 
@@ -80,15 +81,14 @@ function ACEDExtModel(dict, coeff_count; coupling_backend=:new)
         for (basis_idx, (l1, l2)) in enumerate((l1, l2) for l1 in 0:l1max for l2 in 0:l2max)
             rows = angular_orbital_range(norb1, l1)
             cols = angular_orbital_range(norb2, l2)
-            push!(ao_blocks, AOBlock(l1, l2, basis_idx, rows, cols,
-                                     zeros(Float64, coeff_count)))
+            push!(ao_blocks, AOBlock(l1, l2, basis_idx, rows, cols, Float64[]))
         end
 
         pos_i = findall(==(atom_i), atom_ids)
         pos_j = findall(==(atom_j), atom_ids)
         push!(atom_blocks, AtomBlock(atom_i, atom_j, pos_i, pos_j, ao_blocks))
     end
-    return ACEDExtModel(ace_model, atom_blocks, coeff_count, false)
+    return ACEDExtModel(ace_model, atom_blocks, false)
 end
 
 function basis_values(model::ACEDExtModel, frames)
@@ -151,9 +151,7 @@ function complete_hermitian!(d, atom_blocks, natoms)
 end
 
 function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame; λ=1e-14)
-    length(train_frames) == model.coeff_count ||
-        throw(DimensionMismatch("training-frame count does not match coeff_count"))
-
+    isempty(train_frames) && throw(ArgumentError("at least one training frame is required"))
     ntrain = length(train_frames)
     basis = basis_values(model, [train_frames; [ref_frame, test_frame]])
     coeff_sets = Vector{Vector{Vector{Float64}}}(undef, length(model.atom_blocks))
@@ -185,7 +183,7 @@ function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame; 
     complete_hermitian!(d_raw, model.atom_blocks, length(test_frame["atomic_numbers"]))
     for (atom, coeffs) in zip(model.atom_blocks, coeff_sets)
         for (ao, block_coeffs) in zip(atom.ao_blocks, coeffs)
-            ao.coeffs .= block_coeffs
+            ao.coeffs = block_coeffs
         end
     end
     model.trained = true
@@ -221,8 +219,21 @@ trajectory = TrajectoryHDF5(data_file)
 frames = [convert_frame(read_frame(trajectory, i)) for i in 0:last_idx]
 close(trajectory.file)
 
-dictionary = frame2dict(first(frames); nu=nu, degree=degree, rcut=rcut, zcut=zcut)
-model = ACEDExtModel(dictionary, q - 1; coupling_backend=:new)
+meta = frame2meta(first(frames))
+model_spec = Dict{String,Any}(
+    "species" => Dict(
+        z => Dict{String,Any}(
+            "n_orbs" => n_orb,
+            "maxdeg" => degree,
+            "ord" => nu,
+            "rcut" => rcut,
+            "zcut" => zcut
+        ) for (z, n_orb) in zip(meta.species, meta.n_orbs)
+    ),
+    "atomic_numbers" => meta.atomic_numbers,
+    "ao_labels" => meta.ao_labels
+)
+model = ACEDExtModel(model_spec; coupling_backend=:new)
 
 errors = Float64[]
 for test_idx in q:last_idx

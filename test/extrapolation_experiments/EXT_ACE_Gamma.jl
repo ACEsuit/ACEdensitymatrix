@@ -27,7 +27,7 @@ using Random
 
 include(joinpath(@__DIR__, "EXT_utils.jl"))
 
-export ACEGammaExtModel, design_mats, gram_mats, extrapolate!, frame2dict
+export ACEGammaExtModel, design_mats, gram_mats, extrapolate!, training_size, frame2meta
 
 mutable struct AOBlock{T}
     l::Int
@@ -44,13 +44,14 @@ end
 mutable struct ACEGammaExtModel{T,B}
     onsite_models::Dict{T,AbstractModel}
     atom_blocks::Vector{B}
-    coeff_count::Int
     trained::Bool
 end
 
-function ACEGammaExtModel(dict, coeff_count; coupling_backend=:new)
-    coeff_count > 0 || throw(ArgumentError("coeff_count must be positive"))
-    species_dict = dict["species"]
+training_size(model::ACEGammaExtModel) = model.trained ?
+    length(model.atom_blocks[1].ao_blocks[1].coeffs) : "model has not been trained"
+
+function ACEGammaExtModel(model_spec; coupling_backend=:new)
+    species_dict = model_spec["species"]
     species = sort(collect(keys(species_dict)))
     t = eltype(species)
     onsite_models = Dict{t,AbstractModel}()
@@ -63,8 +64,8 @@ function ACEGammaExtModel(dict, coeff_count; coupling_backend=:new)
                                     coupling_backend=coupling_backend)
     end
 
-    z = dict["atomic_numbers"]
-    labels = dict["ao_labels"]
+    z = model_spec["atomic_numbers"]
+    labels = model_spec["ao_labels"]
     layout = ao_block_labels(labels)
     atom_ids = layout.atom_ids
     ls = layout.angular_momenta
@@ -81,11 +82,11 @@ function ACEGammaExtModel(dict, coeff_count; coupling_backend=:new)
             basis_idx = findfirst(==((l, 0)), l_blocks)
             isnothing(basis_idx) && error("onsite model for atom $atom_idx has no (l,0) block")
             rows = findall((atom_ids .== atom_idx) .& (ls .== l))
-            push!(ao_blocks, AOBlock(l, rows, basis_idx, zeros(Float64, coeff_count)))
+            push!(ao_blocks, AOBlock(l, rows, basis_idx, Float64[]))
         end
         push!(atom_blocks, AtomBlock(atom_idx, ao_blocks))
     end
-    return ACEGammaExtModel(onsite_models, atom_blocks, coeff_count, false)
+    return ACEGammaExtModel(onsite_models, atom_blocks, false)
 end
 
 function basis_values(model::ACEGammaExtModel, frames)
@@ -121,9 +122,7 @@ gram_mats(model::ACEGammaExtModel, train_frames, ref_frame; λ=0) =
     [regularized_gram(design; λ=λ) for design in design_mats(model, train_frames, ref_frame)]
 
 function extrapolate!(model::ACEGammaExtModel, train_frames, ref_frame, test_frame; λ=1e-14)
-    length(train_frames) == model.coeff_count ||
-        throw(DimensionMismatch("training-frame count does not match coeff_count"))
-
+    isempty(train_frames) && throw(ArgumentError("at least one interpolation frame is required"))
     origin = ref_frame["C"]
     gammas = [grassmann_log(frame["C"], origin) for frame in train_frames]
     ntrain = length(train_frames)
@@ -148,7 +147,7 @@ function extrapolate!(model::ACEGammaExtModel, train_frames, ref_frame, test_fra
 
     for (atom, coeffs) in zip(model.atom_blocks, coeff_sets)
         for (ao, block_coeffs) in zip(atom.ao_blocks, coeffs)
-            ao.coeffs .= block_coeffs
+            ao.coeffs = block_coeffs
         end
     end
     model.trained = true
@@ -184,8 +183,20 @@ trajectory = TrajectoryHDF5(data_file)
 frames = [convert_frame(read_frame(trajectory, i)) for i in 0:last_idx]
 close(trajectory.file)
 
-dictionary = frame2dict(first(frames); nu=nu, degree=degree, rcut=rcut)
-model = ACEGammaExtModel(dictionary, q - 1; coupling_backend=:new)
+meta = frame2meta(first(frames))
+model_spec = Dict{String,Any}(
+    "species" => Dict(
+        z => Dict{String,Any}(
+            "n_orbs" => n_orb,
+            "maxdeg" => degree,
+            "ord" => nu,
+            "rcut" => rcut
+        ) for (z, n_orb) in zip(meta.species, meta.n_orbs)
+    ),
+    "atomic_numbers" => meta.atomic_numbers,
+    "ao_labels" => meta.ao_labels
+)
+model = ACEGammaExtModel(model_spec; coupling_backend=:new)
 
 errors = Float64[]
 for test_idx in q:last_idx

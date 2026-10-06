@@ -113,22 +113,15 @@ function infer_orbital_multiplicities(frame)
     return mults
 end
 
-"""Construct ACE basis and molecular metadata from one converted frame"""
-function frame2dict(frame; nu, degree, rcut, zcut=10.0)
+"""Return molecular and AO metadata read from one converted frame"""
+function frame2meta(frame)
     mults = infer_orbital_multiplicities(frame)
-    species = Dict(
-        z => Dict{String,Any}(
-            "n_orbs" => norbs,
-            "maxdeg" => degree,
-            "ord" => nu,
-            "rcut" => rcut,
-            "zcut" => zcut
-        ) for (z, norbs) in mults
-    )
-    return Dict{String,Any}(
-        "species" => species,
-        "atomic_numbers" => copy(frame["atomic_numbers"]),
-        "ao_labels" => copy(vec(frame["ao_labels"]))
+    species = sort(collect(keys(mults)))
+    return (
+        atomic_numbers=copy(frame["atomic_numbers"]),
+        ao_labels=copy(vec(frame["ao_labels"])),
+        species=species,
+        n_orbs=[mults[z] for z in species]
     )
 end
 
