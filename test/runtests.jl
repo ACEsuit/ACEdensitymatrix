@@ -6,6 +6,7 @@ using Test
     include("test_backend_equivalence.jl")
     include("test_sparse_evaluation.jl")
     include("test_explicit_spec_constructor.jl")
+    include("test_fixed_particle_specs.jl")
     include("test_mwe.jl")
     include("test_reorder.jl")
 end
