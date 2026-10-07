@@ -521,7 +521,21 @@ LuxCore.initialstates(rng::AbstractRNG, l::LinearLayer_loc) =
 ## =====================================================================================
 # fix something stupid in EQM
 using EquivariantModels: make_nlms_spec, getspec1idx, gensparse, getspecnlm, specnlm2spec1p
-function degord2spec_loc(radial::Radial_basis; totaldegree, order, Lmax, catagories = [], filtered_extension = simple_extension, wL = 1, rSH = false)
+
+_is_zero_channel(b) = b.n == 0 && b.l == 0 && b.m == 0
+
+function _remove_redundant_zero_padding(AAspec)
+   available = Set(Tuple(bb) for bb in AAspec)
+   return filter(AAspec) do bb
+      length(bb) == 1 && return true
+      !any(eachindex(bb)) do i
+         _is_zero_channel(bb[i]) &&
+            Tuple(bb[j] for j in eachindex(bb) if j != i) in available
+      end
+   end
+end
+
+function degord2spec_loc(radial::Radial_basis; totaldegree, order, Lmax, catagories = [], filtered_extension = simple_extension, wL = 1, rSH = false, fixed_particle_number::Bool = false)
    # Rn = radial.radial_basis(totaldegree)
    if typeof(totaldegree) == Int64
       totaldegree = repeat([totaldegree], order)
@@ -556,6 +570,9 @@ function degord2spec_loc(radial::Radial_basis; totaldegree, order, Lmax, catagor
    AAspec = getspecnlm(spec1p, spec)
    if !isempty(catagories)
       AAspec = filtered_extension(AAspec, catagories)
+   end
+   if fixed_particle_number
+      AAspec = _remove_redundant_zero_padding(AAspec)
    end
    Aspec = specnlm2spec1p(AAspec)[1]
    return Aspec, AAspec # Aspecgetspecnlm(spec1p, spec)
@@ -630,8 +647,8 @@ equivariant_model_loc(spec_nlm, radial::Radial_basis, L::Int64; categories=[], _
       equivariant_model_loc(spec_nlm, radial, L, L; categories, _get_cat, AA2BB, d, group, isState, isreal, tuned_filter, coupling_backend)
  
  # more constructors equivariant_model
-equivariant_model_loc(totdeg::Int64, ν::Int64, radial::Radial_basis, L1::Int64, L2::Int64; categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState = true, isreal = true, cat_extension = simple_extension, tuned_filter = nothing, coupling_backend::Symbol = :old) =
-      equivariant_model_loc(degord2spec_loc(radial; totaldegree = totdeg, order = ν, Lmax = L1+L2, catagories = categories, filtered_extension = cat_extension)[2], radial, L1, L2; categories, _get_cat, AA2BB, d, group, isState, isreal, tuned_filter, coupling_backend)
+equivariant_model_loc(totdeg::Int64, ν::Int64, radial::Radial_basis, L1::Int64, L2::Int64; categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState = true, isreal = true, cat_extension = simple_extension, tuned_filter = nothing, coupling_backend::Symbol = :old, fixed_particle_number::Bool = false) =
+      equivariant_model_loc(degord2spec_loc(radial; totaldegree = totdeg, order = ν, Lmax = L1+L2, catagories = categories, filtered_extension = cat_extension, fixed_particle_number = fixed_particle_number)[2], radial, L1, L2; categories, _get_cat, AA2BB, d, group, isState, isreal, tuned_filter, coupling_backend)
 
  # With the _close function, the input could simply be an nnlllist (nlist,llist)
 
@@ -640,8 +657,8 @@ equivariant_model_loc(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis
     equivariant_model_loc(_close(nn, ll; filter = filter), radial, L1, L2; categories, _get_cat, AA2BB, d, group, isState, isreal, tuned_filter, coupling_backend)
 end
 
-equivariant_model_loc(totdeg::Int64, ν::Int64, radial::Radial_basis, L; categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState = true, isreal = true, tuned_filter = nothing, coupling_backend::Symbol = :old) =
-      equivariant_model_loc(totdeg, ν, radial, L, L; categories, _get_cat, AA2BB, d, group, isState, isreal, tuned_filter, coupling_backend)
+equivariant_model_loc(totdeg::Int64, ν::Int64, radial::Radial_basis, L; categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState = true, isreal = true, tuned_filter = nothing, coupling_backend::Symbol = :old, fixed_particle_number::Bool = false) =
+      equivariant_model_loc(totdeg, ν, radial, L, L; categories, _get_cat, AA2BB, d, group, isState, isreal, tuned_filter, coupling_backend, fixed_particle_number)
 
 equivariant_model_loc(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis, L; categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState = true, isreal = true, tuned_filter = nothing, coupling_backend::Symbol = :old) =
       equivariant_model_loc(nn, ll, radial, L, L; categories, _get_cat, AA2BB, d, group, isState, isreal, tuned_filter, coupling_backend)
@@ -670,12 +687,12 @@ end
 equivariant_operator(spec_nlm, radial::Radial_basis, L::Int64, n_orbs::Vector{Int64}=ones(Int64,L+1); categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState=true, isreal = true, tuned_filter = nothing, coupling_backend::Symbol = :old) =
     equivariant_operator(spec_nlm, radial, L, L, n_orbs, n_orbs; categories = categories, _get_cat = _get_cat, AA2BB = AA2BB, d = d, group = group, isState = isState, isreal = isreal, tuned_filter = tuned_filter, coupling_backend = coupling_backend)
 
-function equivariant_operator(totdeg::Union{Int64,Vector{Int64}}, ν::Int64, radial::Radial_basis, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState=true, isreal = true, cat_extension = simple_extension, tuned_filter = nothing, coupling_backend::Symbol = :old)
-   equivariant_operator(degord2spec_loc(radial; totaldegree = totdeg, order = ν, Lmax = L1+L2, catagories = categories, filtered_extension = cat_extension)[2], radial, L1, L2, n_orbs1, n_orbs2; categories = categories, _get_cat = _get_cat, AA2BB = AA2BB, d = d, group = group, isState = isState, isreal = isreal, tuned_filter = tuned_filter, coupling_backend = coupling_backend)
+function equivariant_operator(totdeg::Union{Int64,Vector{Int64}}, ν::Int64, radial::Radial_basis, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState=true, isreal = true, cat_extension = simple_extension, tuned_filter = nothing, coupling_backend::Symbol = :old, fixed_particle_number::Bool = false)
+   equivariant_operator(degord2spec_loc(radial; totaldegree = totdeg, order = ν, Lmax = L1+L2, catagories = categories, filtered_extension = cat_extension, fixed_particle_number = fixed_particle_number)[2], radial, L1, L2, n_orbs1, n_orbs2; categories = categories, _get_cat = _get_cat, AA2BB = AA2BB, d = d, group = group, isState = isState, isreal = isreal, tuned_filter = tuned_filter, coupling_backend = coupling_backend)
 end
 
-equivariant_operator(totdeg::Union{Int64,Vector{Int64}}, ν::Int64, radial::Radial_basis, L::Int64, n_orbs::Vector{Int64}=ones(Int64,L+1); categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState=true, isreal = true, tuned_filter = nothing, coupling_backend::Symbol = :old) =
-    equivariant_operator(totdeg, ν, radial, L, L, n_orbs, n_orbs; categories = categories, _get_cat = _get_cat, AA2BB = AA2BB, d = d, group = group, isState = isState, isreal = isreal, tuned_filter = tuned_filter, coupling_backend = coupling_backend)
+equivariant_operator(totdeg::Union{Int64,Vector{Int64}}, ν::Int64, radial::Radial_basis, L::Int64, n_orbs::Vector{Int64}=ones(Int64,L+1); categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState=true, isreal = true, tuned_filter = nothing, coupling_backend::Symbol = :old, fixed_particle_number::Bool = false) =
+    equivariant_operator(totdeg, ν, radial, L, L, n_orbs, n_orbs; categories = categories, _get_cat = _get_cat, AA2BB = AA2BB, d = d, group = group, isState = isState, isreal = isreal, tuned_filter = tuned_filter, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number)
 
 
 function equivariant_operator(nn::Vector{Int64}, ll::Vector{Int64}, radial::Radial_basis, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); categories=[], _get_cat = _get_cat_default, AA2BB = nothing, d=3, group="O3", isState=true, isreal = true, tuned_filter = nothing, coupling_backend::Symbol = :old)
