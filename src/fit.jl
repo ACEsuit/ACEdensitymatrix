@@ -85,6 +85,67 @@ function _fit_matrix_block(A_data, Ys, n_orbs1, n_orbs2, l1, l2,
 end
 
 
+function _prepare_matrix_fit(model, Rs, reg; multi_thread::Bool=false)
+    # Identify the output blocks and their orbital dimensions
+    LLset = [
+        (l1, l2) for l1 in 0:get_L(model)[1]
+        for l2 in 0:get_L(model)[2]
+    ]
+    n_orbs1, n_orbs2 = get_norbs(model)
+    @assert length(LLset) == length(model.ps.dot)
+
+    # Evaluate the shared basis and assemble one design matrix per block
+    partial_model = Chain([model.model.layers[i] for i in 1:5]...)
+    ps, st = Lux.setup(MersenneTwister(1234), partial_model)
+    design_mats = [
+        zeros(
+            (2l1 + 1) * (2l2 + 1) * length(Rs),
+            size(model.ps.dot[i].W, 2),
+        ) for (i, (l1, l2)) in enumerate(LLset)
+    ]
+    _fill_design_matrices!(
+        design_mats, Rs, LLset, partial_model, ps, st;
+        multi_thread=multi_thread,
+    )
+
+    # Match one regularizer to each design matrix
+    regularizers = if reg == :id
+        [I for _ in LLset]
+    elseif reg == :smooth
+        regularizer(model)
+    else
+        throw(ArgumentError("unknown regularizer: $reg"))
+    end
+    return (; LLset, n_orbs1, n_orbs2, design_mats, regularizers)
+end
+
+
+function _commit_matrix_fit!(model, prepared, results; verbose::Bool=true)
+    # Install the solved weights and report each block error
+    for (i, (l1, l2)) in enumerate(prepared.LLset)
+        weights, rmse = results[i]
+        model.ps.dot[i].W .= weights
+        if verbose
+            println("Fitting the $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) blocks ...")
+            println()
+            println("RMSE = $rmse")
+            println()
+        end
+    end
+
+    # Preserve the concrete model type while marking it as fitted
+    model_type = typeof(model)
+    return if model_type <: On_Model
+        model_type(model.model, model.ps, model.st, model.n_orbs, true)
+    else
+        model_type(
+            model.model, model.ps, model.st,
+            model.n_orbs1, model.n_orbs2, true,
+        )
+    end
+end
+
+
 # ```
 # fit function for onsite model:
 #     model: a On_Model object, fitted or not
@@ -93,60 +154,35 @@ end
 # ```
 # TODO : think about what is the best way to incorporate the regularization term (in solver? in line? in variables?)
 function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Matrix{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, reg = :id, GC_switcher = false, multi_thread::Bool = false) where {T, TY}
-    TP = typeof(model)
-    LLset = [(l1,l2) for l1 in 0:get_L(model)[1] for l2 in 0:get_L(model)[2]]
-    n_orbs1, n_orbs2 = get_norbs(model)
-    @assert(length(LLset) == length(model.ps.dot))
-
-    # evaluate the EQM for all R in Rs, just once, and construct all the design matrices A -> A_all
-    partial_md = Chain([model.model.layers[i] for i = 1:5]...)
-    ps, st = Lux.setup(MersenneTwister(1234), partial_md)
-    A_all = [ zeros((2*LLset[i][1]+1)*(2*LLset[i][2]+1)*length(Rs), size(model.ps.dot[i].W,2)) for i = 1:length(LLset) ]
-
-    _fill_design_matrices!(A_all, Rs, LLset, partial_md, ps, st;
-                           multi_thread=multi_thread)
-
-    if reg == :id
-        Γ = [ I for i = 1:length(LLset) ]
-    elseif reg == :smooth
-        Γ = regularizer(model)
-    end
-
-    results = Vector{Tuple{Matrix{Float64},Float64}}(undef, length(LLset))
+    prepared = _prepare_matrix_fit(
+        model, Rs, reg; multi_thread=multi_thread,
+    )
+    results = Vector{Tuple{Matrix{Float64},Float64}}(
+        undef, length(prepared.LLset),
+    )
     fit_block!(i) = begin
-        l1, l2 = LLset[i]
+        l1, l2 = prepared.LLset[i]
         results[i] = _fit_matrix_block(
-            A_all[i], Ys, n_orbs1, n_orbs2, l1, l2,
-            model.ps.dot[i].W, Γ[i], solver, λ,
+            prepared.design_mats[i], Ys,
+            prepared.n_orbs1, prepared.n_orbs2, l1, l2,
+            model.ps.dot[i].W, prepared.regularizers[i], solver, λ,
         )
     end
 
     parallel_blocks = multi_thread && Threads.nthreads() > 1 &&
-                      BLAS.get_num_threads() == 1 && length(LLset) > 1 &&
+                      BLAS.get_num_threads() == 1 &&
+                      length(prepared.LLset) > 1 &&
                       solver isa ACEfit.QR
     if parallel_blocks
-        Threads.@threads :dynamic for i in eachindex(LLset)
+        Threads.@threads :dynamic for i in eachindex(prepared.LLset)
             fit_block!(i)
         end
     else
-        for i in eachindex(LLset)
+        for i in eachindex(prepared.LLset)
             fit_block!(i)
         end
     end
-
-    for (i, (l1, l2)) in enumerate(LLset)
-        weights, rmse = results[i]
-        model.ps.dot[i].W .= weights
-        println("Fitting the $(Dict_Int2Orbs[l1])$(Dict_Int2Orbs[l2]) blocks ...")
-        println()
-        println("RMSE = $rmse")
-        println()
-    end
-    
-    model = (TP <: On_Model) ? TP(model.model, model.ps, model.st, model.n_orbs, true) : TP(model.model, model.ps, model.st, model.n_orbs1, model.n_orbs2, true)
-    # @show model.ps.dot[1].W
-    # @show model.fitted
-    # return model
+    return _commit_matrix_fit!(model, prepared, results)
 end
 
 function fit!(model::AbstractModel, Rs::Union{Vector{PState{T}},Vector{Vector{PState{T}}}}, Ys::Vector{Vector{TY}}; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, reg = :id, GC_switcher = false, multi_thread::Bool = false) where {T, TY}
@@ -256,15 +292,96 @@ function split_data(frames::Vector{Dict{String, Array}}, keys::Base.KeySet{Union
     return Rs, Ys
 end
 
+
+function _fit_density_pipeline!(model, Rs, Ys, solver, λ, reg;
+                                GC_switcher=false)
+    jobs = Any[]
+    for key in sort!(collect(keys(model.Models)); by=string)
+        isempty(Rs[key]) && continue
+        states = Vector{typeof(first(Rs[key]))}(Rs[key])
+        targets = Vector{typeof(first(Ys[key]))}(Ys[key])
+        push!(jobs, (
+            key=key, model=model.Models[key],
+            states=states, targets=targets,
+        ))
+    end
+    prepared = Vector{Any}(undef, length(jobs))
+    block_results = Vector{Any}(undef, length(jobs))
+
+    # Release each model's block solves as soon as its design matrices are ready
+    @sync for model_index in eachindex(jobs)
+        Threads.@spawn begin
+            job = jobs[model_index]
+            fit_data = _prepare_matrix_fit(
+                job.model, job.states, reg; multi_thread=false,
+            )
+            prepared_job = merge(job, fit_data)
+            prepared[model_index] = prepared_job
+            results = Vector{Tuple{Matrix{Float64},Float64}}(
+                undef, length(fit_data.LLset),
+            )
+            @sync for block_index in eachindex(fit_data.LLset)
+                Threads.@spawn begin
+                    l1, l2 = fit_data.LLset[block_index]
+                    results[block_index] = _fit_matrix_block(
+                        fit_data.design_mats[block_index], job.targets,
+                        fit_data.n_orbs1, fit_data.n_orbs2, l1, l2,
+                        job.model.ps.dot[block_index].W,
+                        fit_data.regularizers[block_index], solver, λ,
+                    )
+                end
+            end
+            block_results[model_index] = results
+        end
+    end
+
+    # Keep dictionary mutation and logging outside the worker tasks
+    for model_index in eachindex(prepared)
+        job = prepared[model_index]
+        if job.key isa Tuple
+            println("=== Fitting for $(Dict_Int2Spec[job.key[1]])-$(Dict_Int2Spec[job.key[2]]) offsite model ===")
+        else
+            println("==== Fitting for $(Dict_Int2Spec[job.key]) onsite model ====")
+        end
+        println()
+        model.Models[job.key] = _commit_matrix_fit!(
+            job.model, job, block_results[model_index],
+        )
+        prepared[model_index] = nothing
+        block_results[model_index] = nothing
+        GC_switcher && GC.gc()
+    end
+    return model
+end
+
+
 # Fit a whole Density_Model
 # Here, frames can be non_franslated frame (directly read from data) which will be transfer to a readable format (i.e. convert_frame) in split_data function
 # The function should return a fitted Density_Model
 
 # TODO: check the types of Rs and Ys from the above function split_data
 function fit!(model::Density_Model, Rs, Ys; solver = ACEfit.SKLEARN_BRR(), λ = 1e-12, reg = :id, Mode = "D", multi_thread::Bool = false, GC_switcher = false)
+    use_pipeline = multi_thread && Threads.nthreads() > 1 &&
+                   BLAS.get_num_threads() == 1 && solver isa ACEfit.QR &&
+                   iszero(solver.lambda)
+    # use specialized pipeline for multi-threaded fitting of multiple models in parallel
+    if use_pipeline
+        _fit_density_pipeline!(
+            model, Rs, Ys, solver, λ, reg; GC_switcher=GC_switcher,
+        )
+        if !isfitted(model)
+            @warn("Some models are not fitted because there is a lack of corresponding data...")
+        end
+        return model
+    end
+
     keys_in_order = sort!(collect(keys(model.Models)); by=string)
     for key in keys_in_order
-        typeof(key) <: Tuple ? println("=== Fitting for $(Dict_Int2Spec[key[1]])-$(Dict_Int2Spec[key[2]]) offsite model ===") : println("==== Fitting for $(Dict_Int2Spec[key]) onsite model ====")
+        if key isa Tuple
+            println("=== Fitting for $(Dict_Int2Spec[key[1]])-$(Dict_Int2Spec[key[2]]) offsite model ===")
+        else
+            println("==== Fitting for $(Dict_Int2Spec[key]) onsite model ====")
+        end
         println()
         if length(Rs[key]) == 0 || length(Ys[key]) == 0
             continue
