@@ -61,7 +61,8 @@ function ACEGammaExtModel(model_spec; coupling_backend=:new)
         cutoff = haskey(spec, "rcut_on") ? spec["rcut_on"] : spec["rcut"]
         onsite_models[z] = On_Model(spec["maxdeg"], spec["ord"], cutoff, z, species,
                                     length(spec["n_orbs"]) - 1, spec["n_orbs"];
-                                    coupling_backend=coupling_backend)
+                                    coupling_backend=coupling_backend,
+                                    fixed_particle_number=true)
     end
 
     z = model_spec["atomic_numbers"]

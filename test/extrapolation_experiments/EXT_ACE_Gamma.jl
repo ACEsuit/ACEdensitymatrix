@@ -67,7 +67,8 @@ function atom_pairs(z)
 end
 
 function ACEDExtModel(model_spec; coupling_backend=:new)
-    ace_model = Density_Model(model_spec["species"]; coupling_backend=coupling_backend)
+    ace_model = Density_Model(model_spec["species"];
+        coupling_backend=coupling_backend, fixed_particle_number=true)
     z = model_spec["atomic_numbers"]
     labels = model_spec["ao_labels"]
     atom_ids = ao_block_labels(labels).atom_ids
