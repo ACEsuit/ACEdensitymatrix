@@ -159,6 +159,8 @@ function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame, 
     ntrain = length(train_frames)
     basis = basis_values(model, [train_frames; [ref_frame, test_frame]];
                          parallel=parallel)
+
+    ACEDExtrapolation.set_tangent!(transform, ref_frame["C"])
     gammas = parallel_map(train_frames; parallel=parallel) do frame
         forward_transform(transform, frame["C"])
     end
@@ -202,6 +204,11 @@ function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame, 
         gamma_raw[atom.pos_i, atom.pos_j] .= gamma_block
     end
 
+    # Gamma satisfies:
+    # D0 Gamma + Gamma D0 - Gamma = 0
+    # Gamma = Gamma'
+    # we recover the missing symmetric part here
+
     complete_hermitian!(gamma_raw, model.atom_blocks, length(test_frame["atomic_numbers"]))
     for (atom, coeffs) in zip(model.atom_blocks, coeff_sets)
         for (ao, block_coeffs) in zip(atom.ao_blocks, coeffs)
@@ -210,43 +217,16 @@ function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame, 
     end
     model.trained = true
 
-    #= DEBUG: replace the ACE fit with one global H-based interpolation
-    target_descriptor = vec(test_frame["H"])
-    target_gamma = forward_transform(transform, test_frame["C"])
-    gammas_train = []
-    B = zeros(Float64, length(target_descriptor), length(train_frames))
-    for (i, frame) in enumerate(train_frames)
-        gamma = forward_transform(transform, frame["C"])
-        push!(gammas_train, gamma)
-        B[:,i] .= vec(frame["H"])
-    end
-    A = B' * B
-    b = B' * target_descriptor
-    coeffs = A \ b
-    gamma_raw[:,:] .= 0.0
-    for (i, coeff) in enumerate(coeffs)
-        gamma_raw .+= coeff*gammas_train[i]
-    end
-    re_gamma = norm(gamma_raw - target_gamma)/norm(target_gamma)
-    @show re_gamma
-    =#
-
-    c = backward_transform(transform, gamma_raw; s=test_frame["S"])
+    c = backward_transform(transform, gamma_raw)
     d_pred = c * c'
 
     sinv_sqrt = test_frame["S"]^(-0.5)
     c = sinv_sqrt * test_frame["C"][:,1:transform.nocc]
-    d_ref = c * c'
-    #d_ref = test_frame["D"]
+    d_ref = test_frame["D"]
 
-    re = norm(d_pred - d_ref)/norm(d_ref)
-    @show re
-
-    #d_ref_ao = sinv_sqrt * d_ref * sinv_sqrt
-
-    #diff_ao = d_pred - d_ref_ao #sinv_sqrt * (d_pred - d_ref) * sinv_sqrt
-    #re = norm(diff_ao) / norm(d_ref_ao)
-    #@show re
+    d_ref_ao = sinv_sqrt * d_ref * sinv_sqrt
+    diff_ao = sinv_sqrt * (d_pred - d_ref) * sinv_sqrt
+    re = norm(diff_ao) / norm(d_ref_ao)
     return (re=re, d_pred=d_pred)
 end
 
@@ -270,13 +250,13 @@ zcut = 10.0
 
 last_idx = q + nwindows - 1
 trajectory = TrajectoryHDF5(data_file)
-frames = [convert_frame(read_frame(trajectory, i)) for i in 0:last_idx]
 info = read_info(trajectory)
+nocc = div(info["nelectrons"], 2)
+frames = [convert_frame(read_frame(trajectory, i); nocc=nocc) for i in 0:last_idx]
 close(trajectory.file)
 
-nocc = div(info["nelectrons"], 2)
 transform = ACEDExtrapolation.FullTangent(nocc)
-ACEDExtrapolation.set_tangent!(transform, frames[1]["C"])
+#ACEDExtrapolation.set_tangent!(transform, frames[1]["C"])
 
 meta = frame2meta(first(frames))
 model_spec = Dict{String,Any}(
