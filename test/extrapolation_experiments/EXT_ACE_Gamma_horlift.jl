@@ -123,11 +123,11 @@ gram_mats(model::ACEGammaExtModel, train_frames, ref_frame; λ=0) =
     [regularized_gram(design; λ=λ) for design in design_mats(model, train_frames, ref_frame)]
 
 function extrapolate!(model::ACEGammaExtModel, train_frames, ref_frame, test_frame;
-                      λ=1e-14, parallel=false)
+                      nocc, λ=1e-14, parallel=false)
     isempty(train_frames) && throw(ArgumentError("at least one interpolation frame is required"))
-    origin = ref_frame["C"]
+    origin = view(ref_frame["C"], :, 1:nocc)
     gammas = parallel_map(train_frames; parallel=parallel) do frame
-        grassmann_log(frame["C"], origin)
+        grassmann_log(view(frame["C"], :, 1:nocc), origin)
     end
     ntrain = length(train_frames)
     basis = basis_values(model, [train_frames; [ref_frame, test_frame]];
@@ -194,7 +194,9 @@ rcut = 6.5
 
 last_idx = q + nwindows - 1
 trajectory = TrajectoryHDF5(data_file)
-frames = [convert_frame(read_frame(trajectory, i)) for i in 0:last_idx]
+info = read_info(trajectory)
+nocc = div(info["nelectrons"], 2)
+frames = [convert_frame(read_frame(trajectory, i); nocc=nocc) for i in 0:last_idx]
 close(trajectory.file)
 
 meta = frame2meta(first(frames))
@@ -218,10 +220,10 @@ for test_idx in q:last_idx
     ref_idx = test_idx - 1
     train_frames = [frames[i + 1] for i in train_idxs]
     result = extrapolate!(model, train_frames, frames[ref_idx + 1],
-                          frames[test_idx + 1]; λ=λ, parallel=parallel)
+                          frames[test_idx + 1]; nocc=nocc, λ=λ, parallel=parallel)
     push!(errors, result.re)
     println("frame=$test_idx RE=$(result.re)")
 end
 
 mean_re = mean(errors)
-println("EXT_ACE_Gamma, nu=$nu, degree=$degree q=$q mean_RE=$mean_re")
+println("EXT_ACE_Gamma_horlift, nu=$nu, degree=$degree q=$q mean_RE=$mean_re")
