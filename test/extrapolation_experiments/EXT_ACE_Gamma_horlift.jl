@@ -90,10 +90,10 @@ function ACEGammaExtModel(model_spec; coupling_backend=:new)
     return ACEGammaExtModel(onsite_models, atom_blocks, false)
 end
 
-function basis_values(model::ACEGammaExtModel, frames)
+function basis_values(model::ACEGammaExtModel, frames; parallel=false)
     z = first(frames)["atomic_numbers"]
 
-    return map(model.atom_blocks) do atom
+    return parallel_map(model.atom_blocks; parallel=parallel) do atom
         onsite = model.onsite_models[z[atom.atom_idx]]
         evaluator = Chain([onsite.model.layers[layer] for layer in 1:5]...)
         ps, st = Lux.setup(MersenneTwister(1234), evaluator)
@@ -103,10 +103,10 @@ function basis_values(model::ACEGammaExtModel, frames)
                             atom_filter=atom_filter)
             evaluator(env, ps, st)[1]
         end
-        basis = pack_basis_evaluations(vals)
-        maximum(ao.basis_idx for ao in atom.ao_blocks) <= length(basis) ||
+        packed = pack_basis_evaluations(vals)
+        maximum(ao.basis_idx for ao in atom.ao_blocks) <= length(packed) ||
             error("basis and AO-block counts disagree for atom $(atom.atom_idx)")
-        basis
+        packed
     end
 end
 
@@ -122,28 +122,39 @@ end
 gram_mats(model::ACEGammaExtModel, train_frames, ref_frame; λ=0) =
     [regularized_gram(design; λ=λ) for design in design_mats(model, train_frames, ref_frame)]
 
-function extrapolate!(model::ACEGammaExtModel, train_frames, ref_frame, test_frame; λ=1e-14)
+function extrapolate!(model::ACEGammaExtModel, train_frames, ref_frame, test_frame;
+                      λ=1e-14, parallel=false)
     isempty(train_frames) && throw(ArgumentError("at least one interpolation frame is required"))
     origin = ref_frame["C"]
-    gammas = [grassmann_log(frame["C"], origin) for frame in train_frames]
+    gammas = parallel_map(train_frames; parallel=parallel) do frame
+        grassmann_log(frame["C"], origin)
+    end
     ntrain = length(train_frames)
-    basis = basis_values(model, [train_frames; [ref_frame, test_frame]])
-    coeff_sets = Vector{Vector{Vector{Float64}}}(undef, length(model.atom_blocks))
+    basis = basis_values(model, [train_frames; [ref_frame, test_frame]];
+                         parallel=parallel)
+    coeff_sets = [Vector{Vector{Float64}}(undef, length(atom.ao_blocks))
+                  for atom in model.atom_blocks]
     gamma_pred = zeros(Float64, size(origin))
 
-    for (atom_idx, (atom, blocks)) in enumerate(zip(model.atom_blocks, basis))
-        coeff_sets[atom_idx] = Vector{Float64}[]
-        for ao in atom.ao_blocks
-            block = blocks[ao.basis_idx]
-            coeffs = fit_coeffs(view(block, :, 1:ntrain), view(block, :, ntrain + 1),
-                                view(block, :, ntrain + 2); λ=λ)
-            push!(coeff_sets[atom_idx], coeffs)
-
-            dest = view(gamma_pred, ao.rows, :)
-            for (coeff, gamma) in zip(coeffs, gammas)
-                dest .+= coeff .* view(gamma, ao.rows, :)
-            end
+    indices = [(atom_idx, ao_idx) for atom_idx in eachindex(model.atom_blocks)
+               for ao_idx in eachindex(model.atom_blocks[atom_idx].ao_blocks)]
+    ao_fits = parallel_map(indices; parallel=parallel) do index
+        atom_idx, ao_idx = index
+        ao = model.atom_blocks[atom_idx].ao_blocks[ao_idx]
+        block = basis[atom_idx][ao.basis_idx]
+        ao_coeffs = fit_coeffs(view(block, :, 1:ntrain), view(block, :, ntrain + 1),
+                               view(block, :, ntrain + 2); λ=λ)
+        ao_pred = zeros(Float64, length(ao.rows), size(origin, 2))
+        for (coeff, gamma) in zip(ao_coeffs, gammas)
+            ao_pred .+= coeff .* view(gamma, ao.rows, :)
         end
+        return (ao_coeffs, ao_pred)
+    end
+
+    for ((atom_idx, ao_idx), (block_coeffs, gamma_block)) in zip(indices, ao_fits)
+        ao = model.atom_blocks[atom_idx].ao_blocks[ao_idx]
+        coeff_sets[atom_idx][ao_idx] = block_coeffs
+        gamma_pred[ao.rows, :] .= gamma_block
     end
 
     for (atom, coeffs) in zip(model.atom_blocks, coeff_sets)
@@ -177,6 +188,8 @@ degree = 3
 q = 20
 nwindows = 80
 λ = 1e-14
+# Set true when Julia is started with multiple threads; use single-threaded BLAS
+parallel = false
 rcut = 6.5
 
 last_idx = q + nwindows - 1
@@ -205,7 +218,7 @@ for test_idx in q:last_idx
     ref_idx = test_idx - 1
     train_frames = [frames[i + 1] for i in train_idxs]
     result = extrapolate!(model, train_frames, frames[ref_idx + 1],
-                          frames[test_idx + 1]; λ=λ)
+                          frames[test_idx + 1]; λ=λ, parallel=parallel)
     push!(errors, result.re)
     println("frame=$test_idx RE=$(result.re)")
 end

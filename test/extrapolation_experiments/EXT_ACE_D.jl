@@ -92,11 +92,11 @@ function ACEDExtModel(model_spec; coupling_backend=:new)
     return ACEDExtModel(ace_model, atom_blocks, false)
 end
 
-function basis_values(model::ACEDExtModel, frames)
+function basis_values(model::ACEDExtModel, frames; parallel=false)
     z = first(frames)["atomic_numbers"]
     rcut_on, rcut_off, zcut = get_cutoff(model.ace_model)
 
-    return map(model.atom_blocks) do atom
+    return parallel_map(model.atom_blocks; parallel=parallel) do atom
         atom_i, atom_j = atom.atom_i, atom.atom_j
         zi, zj = z[atom_i], z[atom_j]
         if atom_i == atom_j
@@ -113,10 +113,10 @@ function basis_values(model::ACEDExtModel, frames)
             env = get_state(frame["R"], atom_i, atom_j; atom_filter=atom_filter)
             evaluator(env, ps, st)[1]
         end
-        basis = pack_basis_evaluations(vals)
-        length(basis) == length(atom.ao_blocks) ||
+        packed = pack_basis_evaluations(vals)
+        length(packed) == length(atom.ao_blocks) ||
             error("basis and AO-block counts disagree for atoms $atom_i and $atom_j")
-        basis
+        packed
     end
 end
 
@@ -151,33 +151,48 @@ function complete_hermitian!(d, atom_blocks, natoms)
     return d
 end
 
-function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame; λ=1e-14)
+function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame;
+                      λ=1e-14, parallel=false)
     isempty(train_frames) && throw(ArgumentError("at least one training frame is required"))
     ntrain = length(train_frames)
-    basis = basis_values(model, [train_frames; [ref_frame, test_frame]])
-    coeff_sets = Vector{Vector{Vector{Float64}}}(undef, length(model.atom_blocks))
+    basis = basis_values(model, [train_frames; [ref_frame, test_frame]];
+                         parallel=parallel)
+    natom_blocks = length(model.atom_blocks)
+    coeff_sets = [Vector{Vector{Float64}}(undef, length(atom.ao_blocks))
+                  for atom in model.atom_blocks]
+    # Use one atom-pair buffer in both paths so threads never write to d_raw concurrently
+    d_blocks = [zeros(Float64, length(atom.pos_i), length(atom.pos_j))
+                for atom in model.atom_blocks]
     d_raw = zeros(Float64, size(test_frame["D"]))
+    # Extract density blocks once in both paths so threaded jobs only read shared inputs
+    d_trains = [[get_block(frame["D"], atom.atom_i, atom.atom_j,
+                           frame["ao_labels"]) for frame in train_frames]
+                for atom in model.atom_blocks]
+    d_refs = [get_block(ref_frame["D"], atom.atom_i, atom.atom_j,
+                        ref_frame["ao_labels"]) for atom in model.atom_blocks]
 
-    for (atom_idx, (atom, blocks)) in enumerate(zip(model.atom_blocks, basis))
-        d_train = [get_block(frame["D"], atom.atom_i, atom.atom_j, frame["ao_labels"])
-                   for frame in train_frames]
-        d_ref = get_block(ref_frame["D"], atom.atom_i, atom.atom_j, ref_frame["ao_labels"])
-        d_block = zeros(Float64, length(atom.pos_i), length(atom.pos_j))
-        coeff_sets[atom_idx] = Vector{Float64}[]
-
-        for ao in atom.ao_blocks
-            block = blocks[ao.basis_idx]
-            coeffs = fit_coeffs(view(block, :, 1:ntrain), view(block, :, ntrain + 1),
-                                view(block, :, ntrain + 2); λ=λ)
-            push!(coeff_sets[atom_idx], coeffs)
-
-            ref_target = view(d_ref, ao.rows, ao.cols)
-            dest = view(d_block, ao.rows, ao.cols)
-            dest .= ref_target
-            for (coeff, d) in zip(coeffs, d_train)
-                dest .+= coeff .* (view(d, ao.rows, ao.cols) .- ref_target)
-            end
+    indices = [(atom_idx, ao_idx) for atom_idx in 1:natom_blocks
+               for ao_idx in eachindex(model.atom_blocks[atom_idx].ao_blocks)]
+    ao_fits = parallel_map(indices; parallel=parallel) do index
+        atom_idx, ao_idx = index
+        ao = model.atom_blocks[atom_idx].ao_blocks[ao_idx]
+        block = basis[atom_idx][ao.basis_idx]
+        ao_coeffs = fit_coeffs(view(block, :, 1:ntrain), view(block, :, ntrain + 1),
+                               view(block, :, ntrain + 2); λ=λ)
+        ref_target = view(d_refs[atom_idx], ao.rows, ao.cols)
+        ao_pred = Matrix(ref_target)
+        for (coeff, d) in zip(ao_coeffs, d_trains[atom_idx])
+            ao_pred .+= coeff .* (view(d, ao.rows, ao.cols) .- ref_target)
         end
+        return (ao_coeffs, ao_pred)
+    end
+
+    for ((atom_idx, ao_idx), (block_coeffs, d_block_pred)) in zip(indices, ao_fits)
+        ao = model.atom_blocks[atom_idx].ao_blocks[ao_idx]
+        coeff_sets[atom_idx][ao_idx] = block_coeffs
+        d_blocks[atom_idx][ao.rows, ao.cols] .= d_block_pred
+    end
+    for (atom, d_block) in zip(model.atom_blocks, d_blocks)
         d_raw[atom.pos_i, atom.pos_j] .= d_block
     end
 
@@ -212,6 +227,9 @@ degree = 3
 q = 20
 nwindows = 80
 λ = 1e-14
+# Set true when Julia is started with multiple threads; single-threaded BLAS
+# avoids oversubscription of the many independent small QR solves
+parallel = false
 rcut = 6.5
 zcut = 10.0
 
@@ -244,7 +262,7 @@ for test_idx in q:last_idx
     ref_idx = test_idx - 1
     train_frames = [frames[i + 1] for i in train_idxs]
     result = extrapolate!(model, train_frames, frames[ref_idx + 1],
-                          frames[test_idx + 1]; λ=λ)
+                          frames[test_idx + 1]; λ=λ, parallel=parallel)
     push!(errors, result.re)
     println("frame=$test_idx RE=$(result.re)")
 end

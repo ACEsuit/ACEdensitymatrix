@@ -1,7 +1,17 @@
 using ACEdensitymatrix
 using LinearAlgebra
 
-"""Grassmann logarithm in the tangent space at `origin`."""
+"""Apply `operation` independently to every input, optionally using Julia threads"""
+function parallel_map(operation, inputs; parallel=false)
+    !parallel && return map(operation, inputs) # when not parallel, just use the built-in map
+    outputs = Vector{Any}(undef, length(inputs))
+    Threads.@threads for idx in eachindex(inputs)
+        outputs[idx] = operation(inputs[idx])
+    end
+    return outputs
+end
+
+"""Grassmann logarithm in the tangent space at `origin`"""
 function grassmann_log(coefficients, origin)
     psi, _, rotation = svd(coefficients' * origin; full=false)
     aligned = coefficients * psi * rotation'
@@ -10,7 +20,7 @@ function grassmann_log(coefficients, origin)
     return left * Diagonal(asin.(clamp.(values, -1.0, 1.0))) * right'
 end
 
-"""Grassmann exponential from the tangent space at `origin`."""
+"""Grassmann exponential from the tangent space at `origin`"""
 function grassmann_exp(gamma, origin)
     left, values, right = svd(gamma; full=false)
     return origin * right * Diagonal(cos.(values)) * right' +
