@@ -216,7 +216,9 @@ zcut = 10.0
 
 last_idx = q + nwindows - 1
 trajectory = TrajectoryHDF5(data_file)
-frames = [convert_frame(read_frame(trajectory, i)) for i in 0:last_idx]
+info = read_info(trajectory)
+nocc = div(info["nelectrons"], 2)
+frames = [convert_frame(read_frame(trajectory, i); nocc=nocc) for i in 0:last_idx]
 close(trajectory.file)
 
 meta = frame2meta(first(frames))

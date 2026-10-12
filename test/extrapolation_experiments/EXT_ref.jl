@@ -25,13 +25,13 @@ design_mat(model::GExtModel) = model.𝔹
 """Return the regularized Gram matrix of the stored HCore design"""
 gram_mat(model::GExtModel; λ=0) = regularized_gram(design_mat(model); λ=λ)
 
-function train!(model::GExtModel, traj, training_set, ref_index, c0)
+function train!(model::GExtModel, traj, training_set, ref_index, c0, nocc)
     gammas = []
 
     frame_ref = read_frame(traj, ref_index)
     model.descr_ref = vec(frame_ref["Core Hamiltonian"])
     s = frame_ref["Overlap"]
-    c_ = frame_ref["Coefficients"]'
+    c_ = (frame_ref["Coefficients"]')[:,1:nocc]
     sqrt_s = s^0.5
     c = sqrt_s * c_
     model.gamma_ref = grassmann_log(c, c0)
@@ -46,7 +46,7 @@ function train!(model::GExtModel, traj, training_set, ref_index, c0)
         frame_i = training_frames[ii]
         s = frame_i["Overlap"]
 
-        c_ = frame_i["Coefficients"]'
+        c_ = (frame_i["Coefficients"]')[:,1:nocc]
         c = s^0.5 * c_
         gamma = grassmann_log(c, c0)
         push!(gammas, gamma)
@@ -56,7 +56,7 @@ function train!(model::GExtModel, traj, training_set, ref_index, c0)
     return training_descrs
 end
 
-function test(model::GExtModel, traj, training_descrs, test_set, c0; λ=(1.1e-5)^2)
+function test(model::GExtModel, traj, training_descrs, test_set, c0, nocc; λ=(1.1e-5)^2)
     errors = []
     q = length(training_descrs)
     for i in test_set
@@ -75,7 +75,7 @@ function test(model::GExtModel, traj, training_descrs, test_set, c0; λ=(1.1e-5)
         guess_c_ = s^-0.5 * guess_c
         guess_d = guess_c_ * guess_c_'
 
-        c = frame_i["Coefficients"]'
+        c = (frame_i["Coefficients"]')[:,1:nocc]
         d = c * c'
 
         error = norm(guess_d - d)/norm(d)
@@ -89,9 +89,11 @@ qmax = 20
 frame_max = 100
 
 traj = TrajectoryHDF5("data/new_datasets/oxirane.h5")
+info = read_info(traj)
+nocc = div(info["nelectrons"], 2)
 frame_ref = read_frame(traj, 0)
 s0 = frame_ref["Overlap"]
-c0_ = frame_ref["Coefficients"]'
+c0_ = (frame_ref["Coefficients"]')[:,1:nocc]
 c0 = s0^0.5 * c0_
 
 qset = 20:5:qmax
@@ -108,8 +110,8 @@ for (k,q) in enumerate(qset)
         
         model = GExtModel()
 
-        training_descrs = train!(model, traj, training_set, ref_index, c0)
-        error = test(model, traj, training_descrs, test_set, c0)[1]
+        training_descrs = train!(model, traj, training_set, ref_index, c0, nocc)
+        error = test(model, traj, training_descrs, test_set, c0, nocc)[1]
         @show error
         push!(frame_errors[k], error)
     end
