@@ -106,8 +106,7 @@ for (k,q) in enumerate(qset)
         training_set = frame_no-q:frame_no-2
         ref_index = frame_no-1
         test_set = frame_no:frame_no
-        # tangent point for the Grassmann mappings
-        
+
         model = GExtModel()
 
         training_descrs = train!(model, traj, training_set, ref_index, c0, nocc)
@@ -118,8 +117,10 @@ for (k,q) in enumerate(qset)
     errors[k] = mean(frame_errors[k])
 end
 
-@eval using Plots
-Plots.plot(qset, errors)
+println(errors)
+
+#@eval using Plots
+#Plots.plot(qset, errors)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

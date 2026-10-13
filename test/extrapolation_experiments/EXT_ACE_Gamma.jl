@@ -217,6 +217,9 @@ function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame, 
     end
     model.trained = true
 
+    d0 = ref_frame["D"]
+    @show norm(gamma_raw * d0 + d0*gamma_raw - gamma_raw)
+
     c = backward_transform(transform, gamma_raw)
     d_pred = c * c'
 

@@ -76,7 +76,8 @@ end
 
 function backward_transform(transform::FullTangent, gamma::AbstractMatrix; s::Union{AbstractMatrix,Nothing}=nothing)
     cocc = transform.c0[:,1:transform.nocc]
-    gamma_hor = gamma*cocc
+    cvir = transform.c0[:,transform.nocc+1:end]
+    gamma_hor = cvir*cvir'*gamma*cocc # the vertical lift is discarded
     c = grassmann_exp(gamma_hor, transform.c0[:,1:transform.nocc])
     if (s == nothing)
         c_ = c
