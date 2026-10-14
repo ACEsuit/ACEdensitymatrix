@@ -1,129 +1,92 @@
+module RefExtrapolation
 
 using ACEdensitymatrix
 using LinearAlgebra
-using Statistics
+using Lux
+using Random
 
 include(joinpath(@__DIR__, "EXT_utils.jl"))
 using .EXTUtils
 
-mutable struct GExtModel
-    𝔹::Matrix # design matrix - evaluation of the ACE basis
-    gammas::Array
-    gamma_ref::Matrix
-    descr_ref::Vector
+include(joinpath(@__DIR__, "transformations.jl"))
+using .DensityTransformations
 
-    function GExtModel()
-        new(Matrix{Float64}(undef, 0, 0),
-            Array{Float64}(undef, 0, 0, 0),
-            Matrix{Float64}(undef, 0, 0),
-            Vector{Float64}(undef, 0))
-    end
-end
+export extrapolate!
 
-"""Return the centered HCore design matrix stored by `train!`"""
-design_mat(model::GExtModel) = model.𝔹
+function extrapolate!(train_frames, ref_frame, test_frame; λ=1e-14)
+    nocc = Int(sum(test_frame["atomic_numbers"]) / 2)
+    transform = HorLiftTangent(nocc)
+    set_tangent!(transform, ref_frame["C"])
 
-"""Return the regularized Gram matrix of the stored HCore design"""
-gram_mat(model::GExtModel; λ=0) = regularized_gram(design_mat(model); λ=λ)
 
-function train!(model::GExtModel, traj, training_set, ref_index, c0, nocc)
-    gammas = []
+    descr_ref = vec(ref_frame["H"])
+    c = ref_frame["C"]
+    gamma_ref = forward_transform(transform, c)
 
-    frame_ref = read_frame(traj, ref_index)
-    model.descr_ref = vec(frame_ref["Core Hamiltonian"])
-    s = frame_ref["Overlap"]
-    c_ = (frame_ref["Coefficients"]')[:,1:nocc]
-    sqrt_s = s^0.5
-    c = sqrt_s * c_
-    model.gamma_ref = grassmann_log(c, c0)
-
-    training_frames = [read_frame(traj, i) for i in training_set]
     training_descrs = [
-        vec(frame["Core Hamiltonian"]) for frame in training_frames
+        vec(frame["H"]) for frame in train_frames
     ]
-    model.𝔹 = center_design(hcat(training_descrs...), model.descr_ref)
+    B = center_design(hcat(training_descrs...), descr_ref)
 
-    for ii in eachindex(training_frames)
-        frame_i = training_frames[ii]
-        s = frame_i["Overlap"]
-
-        c_ = (frame_i["Coefficients"]')[:,1:nocc]
-        c = s^0.5 * c_
-        gamma = grassmann_log(c, c0)
+    gammas = []
+    for frame in train_frames
+        gamma = forward_transform(transform, frame["C"])
         push!(gammas, gamma)
-
     end
-    model.gammas = gammas
-    return training_descrs
+
+    descr_target = vec(test_frame["H"]) - descr_ref
+    a = fit_coeffs(B, descr_target; λ=λ)
+    guess_gamma = (1.0 - sum(a))*copy(gamma_ref)
+    for (i, frame) in enumerate(train_frames)
+        gamma = forward_transform(transform, frame["C"])
+        guess_gamma += a[i]*gamma
+    end
+
+    c = backward_transform(transform, guess_gamma)
+    d_pred = c * c'
+
+    sinv_sqrt = test_frame["S"]^(-0.5)
+    d_ref = test_frame["D"]
+
+    d_ref_ao = sinv_sqrt * d_ref * sinv_sqrt
+    diff_ao = sinv_sqrt * (d_pred - d_ref) * sinv_sqrt
+    re = norm(diff_ao) / norm(d_ref_ao)
+    return (re=re,)
 end
 
-function test(model::GExtModel, traj, training_descrs, test_set, c0, nocc; λ=(1.1e-5)^2)
-    errors = []
-    q = length(training_descrs)
-    for i in test_set
-        frame_i = read_frame(traj, i)
-        descr_i = vec(frame_i["Core Hamiltonian"])
-        target = descr_i - model.descr_ref
-        a = fit_coeffs(design_mat(model), target; λ=λ)
-
-        guess_gamma = (1.0 - sum(a))*copy(model.gamma_ref)
-        for j in 1:q
-            guess_gamma += a[j]*model.gammas[j]
-        end
-
-        s = frame_i["Overlap"]
-        guess_c = grassmann_exp(guess_gamma, c0)
-        guess_c_ = s^-0.5 * guess_c
-        guess_d = guess_c_ * guess_c_'
-
-        c = (frame_i["Coefficients"]')[:,1:nocc]
-        d = c * c'
-
-        error = norm(guess_d - d)/norm(d)
-        push!(errors, error)
-    end
-    return errors
-end
-
-function main()
-qmax = 20
-frame_max = 100
-
-traj = TrajectoryHDF5("data/new_datasets/oxirane.h5")
-info = read_info(traj)
-nocc = div(info["nelectrons"], 2)
-frame_ref = read_frame(traj, 0)
-s0 = frame_ref["Overlap"]
-c0_ = (frame_ref["Coefficients"]')[:,1:nocc]
-c0 = s0^0.5 * c0_
-
-qset = 20:5:qmax
-errors =zeros(length(qset))
-frame_errors = [Float64[] for _ in qset]
-
-for (k,q) in enumerate(qset)
-    for frame_no in qmax:frame_max-1
-        # start = 0
-        training_set = frame_no-q:frame_no-2
-        ref_index = frame_no-1
-        test_set = frame_no:frame_no
-
-        model = GExtModel()
-
-        training_descrs = train!(model, traj, training_set, ref_index, c0, nocc)
-        error = test(model, traj, training_descrs, test_set, c0, nocc)[1]
-        @show error
-        push!(frame_errors[k], error)
-    end
-    errors[k] = mean(frame_errors[k])
-end
-
-println(errors)
-
-#@eval using Plots
-#Plots.plot(qset, errors)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    main()
+
+    using ACEdensitymatrix
+
+    using .RefExtrapolation
+    using Statistics
+
+    include(joinpath(@__DIR__, "EXT_utils.jl"))
+    using .EXTUtils
+
+    q = 20
+    nwindows = 80
+    λ = (1.1e-5)^2
+    rcut = 6.5
+    data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
+
+    last_idx = q + nwindows - 1
+    trajectory = TrajectoryHDF5(data_file)
+    info = read_info(trajectory)
+    nocc = div(info["nelectrons"], 2)
+    frames = [convert_frame(read_frame(trajectory, i)) for i in 0:last_idx]
+    close(trajectory.file)
+
+    errors = Float64[]
+    for test_idx in q:last_idx
+        train_frames = frames[(test_idx - q + 1):(test_idx - 1)]
+        result = extrapolate!(train_frames, frames[test_idx], frames[test_idx + 1]; λ=λ)
+        println(result)
+        push!(errors, result.re)
+        println("frame=$test_idx RE=$(result.re)")
+    end
+
+    println(mean(errors))
 end
