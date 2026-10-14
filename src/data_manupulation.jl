@@ -9,8 +9,8 @@ include("utils/hdf5.jl")
 include("utils/reorder.jl")
 
 # translate a frame to a pair of data (R, D_R)
-function convert_frame(frame::Dict{String,Array}; nocc::Union{Int,Nothing}=nothing)
-    Zs = Int64.(frame["Atomic numbers"]) 
+function convert_frame(frame::Dict{String,Array})
+    Zs = Int64.(frame["Atomic numbers"])
     Rs = [ frame["Coordinates"][:,i] for i in 1:size(frame["Coordinates"],2) ]
     @assert length(Zs) == length(Rs)
     R = [PState(rr = Rs[j], Z = Zs[j]) for j in 1:length(Zs)]
@@ -22,12 +22,8 @@ function convert_frame(frame::Dict{String,Array}; nocc::Union{Int,Nothing}=nothi
     C = sqrt_S * C # Loewding transformation
     C = apply_reorder(frame["Basis set labels"], C; orbital_dim=1) # Reorder the basis set
 
-    # Density matrix with correct ordering and on the manifold
-    if nocc != nothing
-        D = C[:,1:nocc] * C[:,1:nocc]'
-    else
-        D = C * C'
-    end
+    nocc = Int(sum(Zs/2))
+    D = C[:,1:nocc] * C[:,1:nocc]'
 
     H = copy(frame["Kohn-Sham matrix"])
     H = apply_reorder(frame["Basis set labels"], H; bothsides=true) # Reorder the Hamiltonian

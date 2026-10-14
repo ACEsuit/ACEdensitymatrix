@@ -24,8 +24,9 @@ using Lux
 using Random
 
 include(joinpath(@__DIR__, "EXT_utils.jl"))
+using .EXTUtils
 
-export ACEDExtModel, design_mats, gram_mats, extrapolate!, training_size, frame2meta
+export ACEDExtModel, design_mats, gram_mats, extrapolate!, training_size
 
 mutable struct AOBlock{T}
     l1::Int
@@ -216,56 +217,59 @@ end
 
 end
 
-using .ACEDExtrapolation
-using ACEdensitymatrix
-using Statistics
+if abspath(PROGRAM_FILE) == @__FILE__
+    using .ACEDExtrapolation
+    using ACEdensitymatrix
+    using Statistics
 
-data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
+    include(joinpath(@__DIR__, "EXT_utils.jl"))
+    using .EXTUtils
 
-nu = 2
-degree = 3
-q = 20
-nwindows = 80
-λ = 1e-14
-# Set true when Julia is started with multiple threads; single-threaded BLAS
-# avoids oversubscription of the many independent small QR solves
-parallel = false
-rcut = 6.5
-zcut = 10.0
+    data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
 
-last_idx = q + nwindows - 1
-trajectory = TrajectoryHDF5(data_file)
-info = read_info(trajectory)
-nocc = div(info["nelectrons"], 2)
-frames = [convert_frame(read_frame(trajectory, i); nocc=nocc) for i in 0:last_idx]
-close(trajectory.file)
+    nu = 2
+    degree = 3
+    q = 20
+    nwindows = 80
+    λ = 1e-14
+    # Set true when Julia is started with multiple threads; single-threaded BLAS
+    # avoids oversubscription of the many independent small QR solves
+    parallel = false
+    rcut = 6.5
+    zcut = 10.0
 
-meta = frame2meta(first(frames))
-model_spec = Dict{String,Any}(
-    "species" => Dict(
-        z => Dict{String,Any}(
-            "n_orbs" => n_orb,
-            "maxdeg" => degree,
-            "ord" => nu,
-            "rcut" => rcut,
-            "zcut" => zcut
-        ) for (z, n_orb) in zip(meta.species, meta.n_orbs)
-    ),
-    "atomic_numbers" => meta.atomic_numbers,
-    "ao_labels" => meta.ao_labels
-)
-model = ACEDExtModel(model_spec; coupling_backend=:new)
+    last_idx = q + nwindows - 1
+    trajectory = TrajectoryHDF5(data_file)
+    frames = [convert_frame(read_frame(trajectory, i)) for i in 0:last_idx]
+    close(trajectory.file)
 
-errors = Float64[]
-for test_idx in q:last_idx
-    train_idxs = (test_idx - q):(test_idx - 2)
-    ref_idx = test_idx - 1
-    train_frames = [frames[i + 1] for i in train_idxs]
-    result = extrapolate!(model, train_frames, frames[ref_idx + 1],
-                          frames[test_idx + 1]; λ=λ, parallel=parallel)
-    push!(errors, result.re)
-    println("frame=$test_idx RE=$(result.re)")
+    meta = frame2meta(first(frames))
+    model_spec = Dict{String,Any}(
+        "species" => Dict(
+            z => Dict{String,Any}(
+                "n_orbs" => n_orb,
+                "maxdeg" => degree,
+                "ord" => nu,
+                "rcut" => rcut,
+                "zcut" => zcut
+            ) for (z, n_orb) in zip(meta.species, meta.n_orbs)
+        ),
+        "atomic_numbers" => meta.atomic_numbers,
+        "ao_labels" => meta.ao_labels
+    )
+    model = ACEDExtModel(model_spec; coupling_backend=:new)
+
+    errors = Float64[]
+    for test_idx in q:last_idx
+        train_idxs = (test_idx - q):(test_idx - 2)
+        ref_idx = test_idx - 1
+        train_frames = [frames[i + 1] for i in train_idxs]
+        result = extrapolate!(model, train_frames, frames[ref_idx + 1],
+                              frames[test_idx + 1]; λ=λ, parallel=parallel)
+        push!(errors, result.re)
+        println("frame=$test_idx RE=$(result.re)")
+    end
+
+    mean_re = mean(errors)
+    println("EXT_ACE_D, nu=$nu, degree=$degree q=$q mean_RE=$mean_re")
 end
-
-mean_re = mean(errors)
-println("EXT_ACE_D, nu=$nu, degree=$degree q=$q mean_RE=$mean_re")

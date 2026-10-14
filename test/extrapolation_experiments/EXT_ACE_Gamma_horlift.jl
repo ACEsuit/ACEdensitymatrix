@@ -18,7 +18,7 @@
 # mapped to the Grassmann manifold with the exponential map, and converted to
 #     D_pred = C_pred * C_pred'
 
-module ACEGammaExtrapolation
+module ACEGammaHorLiftExtrapolation
 
 using ACEdensitymatrix
 using LinearAlgebra
@@ -123,8 +123,9 @@ gram_mats(model::ACEGammaExtModel, train_frames, ref_frame; λ=0) =
     [regularized_gram(design; λ=λ) for design in design_mats(model, train_frames, ref_frame)]
 
 function extrapolate!(model::ACEGammaExtModel, train_frames, ref_frame, test_frame;
-                      nocc, λ=1e-14, parallel=false)
+                      λ=1e-14, parallel=false)
     isempty(train_frames) && throw(ArgumentError("at least one interpolation frame is required"))
+    nocc = Int(sum(test_frame["atomic_numbers"]) / 2)
     origin = view(ref_frame["C"], :, 1:nocc)
     gammas = parallel_map(train_frames; parallel=parallel) do frame
         grassmann_log(view(frame["C"], :, 1:nocc), origin)
@@ -177,53 +178,53 @@ end
 
 end
 
-using .ACEGammaExtrapolation
-using ACEdensitymatrix
-using Statistics
+if abspath(PROGRAM_FILE) == @__FILE__
+    using .ACEGammaHorLiftExtrapolation
+    using ACEdensitymatrix
+    using Statistics
 
-data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
+    data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
 
-nu = 2
-degree = 3
-q = 20
-nwindows = 80
-λ = 1e-14
-# Set true when Julia is started with multiple threads; use single-threaded BLAS
-parallel = false
-rcut = 6.5
+    nu = 2
+    degree = 3
+    q = 20
+    nwindows = 80
+    λ = 1e-14
+    # Set true when Julia is started with multiple threads; use single-threaded BLAS
+    parallel = false
+    rcut = 6.5
 
-last_idx = q + nwindows - 1
-trajectory = TrajectoryHDF5(data_file)
-info = read_info(trajectory)
-nocc = div(info["nelectrons"], 2)
-frames = [convert_frame(read_frame(trajectory, i); nocc=nocc) for i in 0:last_idx]
-close(trajectory.file)
+    last_idx = q + nwindows - 1
+    trajectory = TrajectoryHDF5(data_file)
+    frames = [convert_frame(read_frame(trajectory, i)) for i in 0:last_idx]
+    close(trajectory.file)
 
-meta = frame2meta(first(frames))
-model_spec = Dict{String,Any}(
-    "species" => Dict(
-        z => Dict{String,Any}(
-            "n_orbs" => n_orb,
-            "maxdeg" => degree,
-            "ord" => nu,
-            "rcut" => rcut
-        ) for (z, n_orb) in zip(meta.species, meta.n_orbs)
-    ),
-    "atomic_numbers" => meta.atomic_numbers,
-    "ao_labels" => meta.ao_labels
-)
-model = ACEGammaExtModel(model_spec; coupling_backend=:new)
+    meta = frame2meta(first(frames))
+    model_spec = Dict{String,Any}(
+        "species" => Dict(
+            z => Dict{String,Any}(
+                "n_orbs" => n_orb,
+                "maxdeg" => degree,
+                "ord" => nu,
+                "rcut" => rcut
+            ) for (z, n_orb) in zip(meta.species, meta.n_orbs)
+        ),
+        "atomic_numbers" => meta.atomic_numbers,
+        "ao_labels" => meta.ao_labels
+    )
+    model = ACEGammaExtModel(model_spec; coupling_backend=:new)
 
-errors = Float64[]
-for test_idx in q:last_idx
-    train_idxs = (test_idx - q):(test_idx - 2)
-    ref_idx = test_idx - 1
-    train_frames = [frames[i + 1] for i in train_idxs]
-    result = extrapolate!(model, train_frames, frames[ref_idx + 1],
-                          frames[test_idx + 1]; nocc=nocc, λ=λ, parallel=parallel)
-    push!(errors, result.re)
-    println("frame=$test_idx RE=$(result.re)")
+    errors = Float64[]
+    for test_idx in q:last_idx
+        train_idxs = (test_idx - q):(test_idx - 2)
+        ref_idx = test_idx - 1
+        train_frames = [frames[i + 1] for i in train_idxs]
+        result = extrapolate!(model, train_frames, frames[ref_idx + 1],
+                              frames[test_idx + 1]; λ=λ, parallel=parallel)
+        push!(errors, result.re)
+        println("frame=$test_idx RE=$(result.re)")
+    end
+
+    mean_re = mean(errors)
+    println("EXT_ACE_Gamma_horlift, nu=$nu, degree=$degree q=$q mean_RE=$mean_re")
 end
-
-mean_re = mean(errors)
-println("EXT_ACE_Gamma_horlift, nu=$nu, degree=$degree q=$q mean_RE=$mean_re")

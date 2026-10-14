@@ -1,22 +1,24 @@
-## Direct density extrapolation with equivariant ACE descriptors
-
 # This script predicts the density matrix of a target configuration from
 # the `q` immediately preceding configurations using the flattened
 # (`nu`, `degree`) equivariant ACE basis
 # The last preceding frame is always the reference, so `q` consists of `q-1`
 # interpolation frames plus one final reference frame
+#
+# The interpolation is done in the tangent space given a reference
+# density matrix.
 
 # Every exact atom pair and every `(l1,l2)` angular block is fitted
 # independently as
 #     sum_i alpha_i (B_i - B_ref) ≈ B_test - B_ref
 # then
-#     D_pred = D_ref + sum_i alpha_i (D_i - D_ref)
+#     Gamma_pred = Gamma_ref + sum_i alpha_i (Gamma_i - Gamma_ref)
 
-# The predicted blocks are assembled into the full density matrix, completed
-# by Hermiticity, and retracted to an idempotent density with the correct trace
+# The predicted blocks are assembled into the full tangent, completed
+# by Hermiticity, and then the vertical lift is projected away before
+# mapping it back to a density matrix.
 # The reported RE is evaluated in the orthonormal AO basis
 
-module ACEDExtrapolation
+module ACEGammaExtrapolation
 
 using ACEdensitymatrix
 using LinearAlgebra
@@ -24,10 +26,12 @@ using Lux
 using Random
 
 include(joinpath(@__DIR__, "EXT_utils.jl"))
+using .EXTUtils
+
 include(joinpath(@__DIR__, "transformations.jl"))
 using .DensityTransformations
 
-export ACEDExtModel, design_mats, gram_mats, extrapolate!, training_size, frame2meta
+export ACEGammaExtModel, design_mats, gram_mats, extrapolate!, training_size
 
 mutable struct AOBlock{T}
     l1::Int
@@ -46,13 +50,13 @@ struct AtomBlock{B}
     ao_blocks::Vector{B}
 end
 
-mutable struct ACEDExtModel{T,B}
+mutable struct ACEGammaExtModel{T,B}
     ace_model::Density_Model{T}
     atom_blocks::Vector{B}
     trained::Bool
 end
 
-training_size(model::ACEDExtModel) = model.trained ?
+training_size(model::ACEGammaExtModel) = model.trained ?
     length(model.atom_blocks[1].ao_blocks[1].coeffs) : "model has not been trained"
 
 function atom_pairs(z)
@@ -66,7 +70,7 @@ function atom_pairs(z)
     return pairs
 end
 
-function ACEDExtModel(model_spec; coupling_backend=:new)
+function ACEGammaExtModel(model_spec; coupling_backend=:new)
     ace_model = Density_Model(model_spec["species"];
         coupling_backend=coupling_backend, fixed_particle_number=true)
     z = model_spec["atomic_numbers"]
@@ -91,10 +95,10 @@ function ACEDExtModel(model_spec; coupling_backend=:new)
         pos_j = findall(==(atom_j), atom_ids)
         push!(atom_blocks, AtomBlock(atom_i, atom_j, pos_i, pos_j, ao_blocks))
     end
-    return ACEDExtModel(ace_model, atom_blocks, false)
+    return ACEGammaExtModel(ace_model, atom_blocks, false)
 end
 
-function basis_values(model::ACEDExtModel, frames; parallel=false)
+function basis_values(model::ACEGammaExtModel, frames; parallel=false)
     z = first(frames)["atomic_numbers"]
     rcut_on, rcut_off, zcut = get_cutoff(model.ace_model)
 
@@ -122,7 +126,7 @@ function basis_values(model::ACEDExtModel, frames; parallel=false)
     end
 end
 
-function design_mats(model::ACEDExtModel, train_frames, ref_frame)
+function design_mats(model::ACEGammaExtModel, train_frames, ref_frame)
     isempty(train_frames) && throw(ArgumentError("at least one interpolation frame is required"))
     ntrain = length(train_frames)
     basis = basis_values(model, [train_frames; [ref_frame]])
@@ -131,7 +135,7 @@ function design_mats(model::ACEDExtModel, train_frames, ref_frame)
             for (atom, blocks) in zip(model.atom_blocks, basis) for ao in atom.ao_blocks]
 end
 
-gram_mats(model::ACEDExtModel, train_frames, ref_frame; λ=0) =
+gram_mats(model::ACEGammaExtModel, train_frames, ref_frame; λ=0) =
     [regularized_gram(design; λ=λ) for design in design_mats(model, train_frames, ref_frame)]
 
 function complete_hermitian!(d, atom_blocks, natoms)
@@ -153,14 +157,16 @@ function complete_hermitian!(d, atom_blocks, natoms)
     return d
 end
 
-function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame, transform;
+function extrapolate!(model::ACEGammaExtModel, train_frames, ref_frame, test_frame;
                       λ=1e-14, parallel=false)
     isempty(train_frames) && throw(ArgumentError("at least one training frame is required"))
     ntrain = length(train_frames)
     basis = basis_values(model, [train_frames; [ref_frame, test_frame]];
                          parallel=parallel)
 
-    ACEDExtrapolation.set_tangent!(transform, ref_frame["C"])
+    nocc = Int(sum(test_frame["atomic_numbers"]) / 2)
+    transform = FullTangent(nocc)
+    set_tangent!(transform, ref_frame["C"])
     gammas = parallel_map(train_frames; parallel=parallel) do frame
         forward_transform(transform, frame["C"])
     end
@@ -218,13 +224,11 @@ function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame, 
     model.trained = true
 
     d0 = ref_frame["D"]
-    @show norm(gamma_raw * d0 + d0*gamma_raw - gamma_raw)
 
     c = backward_transform(transform, gamma_raw)
     d_pred = c * c'
 
     sinv_sqrt = test_frame["S"]^(-0.5)
-    c = sinv_sqrt * test_frame["C"][:,1:transform.nocc]
     d_ref = test_frame["D"]
 
     d_ref_ao = sinv_sqrt * d_ref * sinv_sqrt
@@ -235,58 +239,58 @@ end
 
 end
 
-using .ACEDExtrapolation
-using ACEdensitymatrix
-using Statistics
+if abspath(PROGRAM_FILE) == @__FILE__
+    using .ACEGammaExtrapolation
+    using ACEdensitymatrix
+    using Statistics
 
-data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
+    include(joinpath(@__DIR__, "EXT_utils.jl"))
+    using .EXTUtils
 
-nu = 2
-degree = 3
-q = 20
-nwindows = 80
-λ = 1e-14
-# Set true when Julia is started with multiple threads; use single-threaded BLAS
-parallel = false
-rcut = 6.5
-zcut = 10.0
+    data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
 
-last_idx = q + nwindows - 1
-trajectory = TrajectoryHDF5(data_file)
-info = read_info(trajectory)
-nocc = div(info["nelectrons"], 2)
-frames = [convert_frame(read_frame(trajectory, i); nocc=nocc) for i in 0:last_idx]
-close(trajectory.file)
+    nu = 2
+    degree = 3
+    q = 20
+    nwindows = 80
+    λ = 1e-14
+    # Set true when Julia is started with multiple threads; use single-threaded BLAS
+    parallel = false
+    rcut = 6.5
+    zcut = 10.0
 
-transform = ACEDExtrapolation.FullTangent(nocc)
-#ACEDExtrapolation.set_tangent!(transform, frames[1]["C"])
+    last_idx = q + nwindows - 1
+    trajectory = TrajectoryHDF5(data_file)
+    frames = [convert_frame(read_frame(trajectory, i)) for i in 0:last_idx]
+    close(trajectory.file)
 
-meta = frame2meta(first(frames))
-model_spec = Dict{String,Any}(
-    "species" => Dict(
-        z => Dict{String,Any}(
-            "n_orbs" => n_orb,
-            "maxdeg" => degree,
-            "ord" => nu,
-            "rcut" => rcut,
-            "zcut" => zcut
-        ) for (z, n_orb) in zip(meta.species, meta.n_orbs)
-    ),
-    "atomic_numbers" => meta.atomic_numbers,
-    "ao_labels" => meta.ao_labels
-)
-model = ACEDExtModel(model_spec; coupling_backend=:new)
+    meta = frame2meta(first(frames))
+    model_spec = Dict{String,Any}(
+        "species" => Dict(
+            z => Dict{String,Any}(
+                "n_orbs" => n_orb,
+                "maxdeg" => degree,
+                "ord" => nu,
+                "rcut" => rcut,
+                "zcut" => zcut
+            ) for (z, n_orb) in zip(meta.species, meta.n_orbs)
+        ),
+        "atomic_numbers" => meta.atomic_numbers,
+        "ao_labels" => meta.ao_labels
+    )
+    model = ACEGammaExtModel(model_spec; coupling_backend=:new)
 
-errors = Float64[]
-for test_idx in q:last_idx
-    train_idxs = (test_idx - q):(test_idx - 2)
-    ref_idx = test_idx - 1
-    train_frames = [frames[i + 1] for i in train_idxs]
-    result = extrapolate!(model, train_frames, frames[ref_idx + 1],
-                          frames[test_idx + 1], transform; λ=λ, parallel=parallel)
-    push!(errors, result.re)
-    println("frame=$test_idx RE=$(result.re)")
+    errors = Float64[]
+    for test_idx in q:last_idx
+        train_idxs = (test_idx - q):(test_idx - 2)
+        ref_idx = test_idx - 1
+        train_frames = [frames[i + 1] for i in train_idxs]
+        result = extrapolate!(model, train_frames, frames[ref_idx + 1],
+                              frames[test_idx + 1]; λ=λ, parallel=parallel)
+        push!(errors, result.re)
+        println("frame=$test_idx RE=$(result.re)")
+    end
+
+    mean_re = mean(errors)
+    println("EXT_ACE_D, nu=$nu, degree=$degree q=$q mean_RE=$mean_re")
 end
-
-mean_re = mean(errors)
-println("EXT_ACE_D, nu=$nu, degree=$degree q=$q mean_RE=$mean_re")

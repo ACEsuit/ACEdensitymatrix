@@ -1,6 +1,7 @@
 module DensityTransformations
 
 include(joinpath(@__DIR__, "EXT_utils.jl"))
+using .EXTUtils
 
 export AbstractTransform, FullTangent, HorLiftTangent, set_tangent!, backward_transform, forward_transform
 
@@ -69,8 +70,6 @@ function forward_transform(transform::FullTangent, c_::AbstractMatrix; s::Union{
     cocc = transform.c0[:,1:transform.nocc]
     gamma = cvir*cvir'*gamma_hor*cocc' + cocc*gamma_hor'*cvir*cvir'
 
-    #d0 = transform.c0[:,1:transform.nocc] * transform.c0[:,1:transform.nocc]'
-    #@show norm(gamma), norm(d0*gamma + gamma*d0 - gamma)
     return gamma
 end
 

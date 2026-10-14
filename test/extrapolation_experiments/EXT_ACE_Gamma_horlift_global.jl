@@ -17,8 +17,9 @@ using Lux
 using Random
 
 include(joinpath(@__DIR__, "EXT_utils.jl"))
+using .EXTUtils
 
-export ACEGammaExtModel_Global, extrapolate!, design_mat, gram_mat, training_size, frame2meta
+export ACEGammaExtModel_Global, extrapolate!, design_mat, gram_mat, training_size
 
 struct AtomBlock
     atom_idx::Int
@@ -84,7 +85,7 @@ gram_mat(model::ACEGammaExtModel_Global, train_frames, ref_frame; λ=0) =
     regularized_gram(design_mat(model, train_frames, ref_frame); λ=λ)
 
 function extrapolate!(model::ACEGammaExtModel_Global, train_frames, ref_frame, test_frame;
-                      nocc, λ=1e-14, parallel=false)
+                      λ=1e-14, parallel=false)
     isempty(train_frames) && throw(ArgumentError("at least one interpolation frame is required"))
     ntrain = length(train_frames)
     basis = basis_values(model, [train_frames; [ref_frame, test_frame]]; parallel=parallel)
@@ -92,6 +93,7 @@ function extrapolate!(model::ACEGammaExtModel_Global, train_frames, ref_frame, t
     target = basis[:, ntrain + 2] - basis[:, ntrain + 1]
     coeffs = fit_coeffs(design, target; λ=λ)
 
+    nocc = Int(sum(test_frame["atomic_numbers"]) / 2)
     origin = view(ref_frame["C"], :, 1:nocc)
     gamma_pred = zeros(Float64, size(origin))
     for (coeff, frame) in zip(coeffs, train_frames)
@@ -112,56 +114,62 @@ end
 
 end
 
-using .ACEGammaExtrapolation_Global
-using ACEdensitymatrix
-using Statistics
+if abspath(PROGRAM_FILE) == @__FILE__
 
-nu = 2
-degree = 3
-q = 20
-nwindows = 80
-λ = 1e-14
-rcut = 6.5
-parallel = false
-data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
+    using .ACEGammaExtrapolation_Global
+    using ACEdensitymatrix
+    using Statistics
 
-last_idx = q + nwindows - 1
-trajectory = TrajectoryHDF5(data_file)
-info = read_info(trajectory)
-nocc = div(info["nelectrons"], 2)
-frames = [convert_frame(read_frame(trajectory, i); nocc=nocc) for i in 0:last_idx]
-close(trajectory.file)
+    include(joinpath(@__DIR__, "EXT_utils.jl"))
+    using .EXTUtils
 
-meta = frame2meta(first(frames))
-model_spec = Dict{String,Any}(
-    "species" => Dict(z => Dict{String,Any}("n_orbs" => n_orb, "maxdeg" => degree,
-        "ord" => nu, "rcut" => rcut) for (z, n_orb) in zip(meta.species, meta.n_orbs)),
-    "atomic_numbers" => meta.atomic_numbers, "ao_labels" => meta.ao_labels)
-model = ACEGammaExtModel_Global(model_spec)
+    nu = 2
+    degree = 3
+    q = 20
+    nwindows = 80
+    λ = 1e-14
+    rcut = 6.5
+    parallel = false
+    data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
 
-errors = Float64[]
-tan_residuals = Float64[]
-design_norms = Float64[]
-descriptor_residuals = Float64[]
-for test_idx in q:last_idx
-    train_frames = frames[(test_idx - q + 1):(test_idx - 1)]
-    result = extrapolate!(model, train_frames, frames[test_idx], frames[test_idx + 1];
-                          nocc=nocc, λ=λ, parallel=parallel)
-    push!(errors, result.re)
-    push!(tan_residuals, result.tan_res)
-    push!(design_norms, result.design_norm)
-    push!(descriptor_residuals, result.descriptor_res)
-    println("frame=$test_idx RE=$(result.re) tangent_residual=$(result.tan_res)")
-end
-println("Global horizontal lift: nu=$nu degree=$degree q=$q mean_RE=$(mean(errors))")
-println("max_tangent_residual=$(maximum(tan_residuals)) design_norm_range=$(extrema(design_norms))")
-println("mean_descriptor_residual=$(mean(descriptor_residuals)) ncoeffs=$(training_size(model))")
+    last_idx = q + nwindows - 1
+    trajectory = TrajectoryHDF5(data_file)
+    info = read_info(trajectory)
+    nocc = div(info["nelectrons"], 2)
+    frames = [convert_frame(read_frame(trajectory, i)) for i in 0:last_idx]
+    close(trajectory.file)
 
-# Save individual windows so the comparison can be revisited without rerunning
-result_file = joinpath(@__DIR__, "gamma_horlift_global_nu$(nu)_degree$(degree)_q$(q)_results.csv")
-open(result_file, "w") do io
-    println(io, "frame,re,tangent_residual,design_norm,descriptor_residual")
-    for (i, test_idx) in enumerate(q:last_idx)
-        println(io, join((test_idx, errors[i], tan_residuals[i], design_norms[i], descriptor_residuals[i]), ','))
+    meta = frame2meta(first(frames))
+    model_spec = Dict{String,Any}(
+        "species" => Dict(z => Dict{String,Any}("n_orbs" => n_orb, "maxdeg" => degree,
+            "ord" => nu, "rcut" => rcut) for (z, n_orb) in zip(meta.species, meta.n_orbs)),
+        "atomic_numbers" => meta.atomic_numbers, "ao_labels" => meta.ao_labels)
+    model = ACEGammaExtModel_Global(model_spec)
+
+    errors = Float64[]
+    tan_residuals = Float64[]
+    design_norms = Float64[]
+    descriptor_residuals = Float64[]
+    for test_idx in q:last_idx
+        train_frames = frames[(test_idx - q + 1):(test_idx - 1)]
+        result = extrapolate!(model, train_frames, frames[test_idx], frames[test_idx + 1];
+                              λ=λ, parallel=parallel)
+        push!(errors, result.re)
+        push!(tan_residuals, result.tan_res)
+        push!(design_norms, result.design_norm)
+        push!(descriptor_residuals, result.descriptor_res)
+        println("frame=$test_idx RE=$(result.re) tangent_residual=$(result.tan_res)")
+    end
+    println("Global horizontal lift: nu=$nu degree=$degree q=$q mean_RE=$(mean(errors))")
+    println("max_tangent_residual=$(maximum(tan_residuals)) design_norm_range=$(extrema(design_norms))")
+    println("mean_descriptor_residual=$(mean(descriptor_residuals)) ncoeffs=$(training_size(model))")
+
+    # Save individual windows so the comparison can be revisited without rerunning
+    result_file = joinpath(@__DIR__, "gamma_horlift_global_nu$(nu)_degree$(degree)_q$(q)_results.csv")
+    open(result_file, "w") do io
+        println(io, "frame,re,tangent_residual,design_norm,descriptor_residual")
+        for (i, test_idx) in enumerate(q:last_idx)
+            println(io, join((test_idx, errors[i], tan_residuals[i], design_norms[i], descriptor_residuals[i]), ','))
+        end
     end
 end

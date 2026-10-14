@@ -4,6 +4,7 @@ using LinearAlgebra
 using Statistics
 
 include(joinpath(@__DIR__, "EXT_utils.jl"))
+using .EXTUtils
 
 mutable struct GExtModel
     𝔹::Matrix # design matrix - evaluation of the ACE basis

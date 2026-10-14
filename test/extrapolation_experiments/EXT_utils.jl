@@ -1,5 +1,11 @@
+module EXTUtils
+
 using ACEdensitymatrix
 using LinearAlgebra
+
+export parallel_map, grassmann_log, grassmann_exp, center_design, regularized_gram,
+       fit_coeffs, ao_block_labels, infer_orbital_multiplicities, frame2meta,
+       angular_orbital_range, pack_basis_evaluations
 
 """Apply `operation` independently to every input, optionally using Julia threads"""
 function parallel_map(operation, inputs; parallel=false)
@@ -67,6 +73,8 @@ function fit_coeffs(design_vals::AbstractMatrix, target_vals::AbstractVector; λ
 
     # Solve the ordinary least-squares problem directly when λ is zero
     λ == 0 && return qr!(design) \ target
+
+    #λ_scaled = λ*sum(abs2, design)
 
     # Append sqrt(λ)I so QR solves the ridge problem without normal equations
     aug = zeros(t, nrows + ncoeffs, ncoeffs)
@@ -171,4 +179,7 @@ function pack_basis_evaluations(vals)
         end
         packed
     end
+end
+
+
 end
