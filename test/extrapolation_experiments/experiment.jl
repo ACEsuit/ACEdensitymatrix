@@ -14,7 +14,7 @@ import .ACEGammaExtrapolation
 include(joinpath(@__DIR__, "EXT_ACE_Gamma_horlift_global.jl"))
 import .ACEGammaExtrapolation_Global
 
-include(joinpath(@__DIR__, "EXT_ref_new.jl"))
+include(joinpath(@__DIR__, "EXT_ref.jl"))
 import .RefExtrapolation
 
 MOLECULES = ["cytosine", "ethyl_acetate", "glycine", "oxirane", "proline"]
