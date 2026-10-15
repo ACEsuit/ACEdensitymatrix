@@ -13,6 +13,11 @@ export write_dict, read_dict
 write_dict(l::Sample_Onsite_Radial) = Dict("__id__"=>"Sample_Onsite_Radial", "maxdeg" => l.maxdeg, "rcut" => l.rcut, "pin" => l.pin, "pout" => l.pout, "r0" => l.r0, "p" => l.p)
 read_dict(::Val{:Sample_Onsite_Radial}, dict::Dict) = Sample_Onsite_Radial(dict["maxdeg"], dict["rcut"], dict["pin"], dict["pout"], dict["r0"], dict["p"])
 
+write_dict(l::Identity_Onsite_Radial) = Dict(
+    "__id__" => "Identity_Onsite_Radial", "maxdeg" => l.maxdeg, "rcut" => l.rcut)
+read_dict(::Val{:Identity_Onsite_Radial}, dict::Dict) =
+    Identity_Onsite_Radial(dict["maxdeg"], dict["rcut"])
+
 write_dict(l::Sample_Offsite_Radial) = begin 
     try 
         Dict("__id__"=>"Sample_Offsite_Radial", "maxdeg" => l.maxdeg, "rcut1" => l.rcut1, "rcut2" => l.rcut2, "zcut" => l.zcut, "pin" => l.pin, "pout" => l.pout, "r0" => l.r0, "p" => l.p)
@@ -21,6 +26,13 @@ write_dict(l::Sample_Offsite_Radial) = begin
         # This line is added to make it compatible with the old version of the model
     end
 end
+
+write_dict(l::Identity_Offsite_Radial) = Dict(
+    "__id__" => "Identity_Offsite_Radial", "maxdeg" => l.maxdeg,
+    "rcut1" => l.rcut1, "rcut2" => l.rcut2, "zcut" => l.zcut)
+read_dict(::Val{:Identity_Offsite_Radial}, dict::Dict) =
+    Identity_Offsite_Radial(
+        dict["maxdeg"], dict["rcut1"], dict["rcut2"], dict["zcut"])
 
 read_dict(::Val{:Sample_Offsite_Radial}, dict::Dict) = begin
     try 
