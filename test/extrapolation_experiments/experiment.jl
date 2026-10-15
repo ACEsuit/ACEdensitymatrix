@@ -43,6 +43,10 @@ const METHODS = [
     (name = "ACE_D",
      make = spec -> ACEDExtrapolation.ACEDExtModel(spec; coupling_backend=:new),
      extrapolate! = ACEDExtrapolation.extrapolate!),
+    (name = "ACE_D_identity",
+     make = spec -> ACEDExtrapolation.ACEDExtModel(
+         spec; coupling_backend=:new, radial_mode=:identity),
+     extrapolate! = ACEDExtrapolation.extrapolate!),
     (name = "ACE_Gamma",
      make = spec -> ACEGammaExtrapolation.ACEGammaExtModel(spec; coupling_backend=:new),
      extrapolate! = ACEGammaExtrapolation.extrapolate!),
