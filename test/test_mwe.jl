@@ -28,6 +28,9 @@ using Test
     )
 
     model = Density_Model(ao_dict; coupling_backend=:new)
+    identity_model = Density_Model(
+        ao_dict; coupling_backend=:new, radial_mode=:identity,
+    )
     train_trajectory = TrajectoryHDF5(
         joinpath(@__DIR__, "data", "propanol_mwe.h5"),
     )
@@ -53,6 +56,10 @@ using Test
                 solver=ACEfit.QR(), λ=1e-4, reg=:smooth,
                 multi_thread=true,
             )
+            fit!(
+                identity_model, training_frames;
+                solver=ACEfit.QR(), λ=1e-4, reg=:smooth,
+            )
         end
     finally
         BLAS.set_num_threads(previous_blas_threads)
@@ -75,11 +82,14 @@ using Test
     )
     frame_prediction = eval_model(model, test_frame)
     threaded_prediction = eval_model(threaded_model, test_frame)
+    identity_prediction = eval_model(identity_model, test_frame)
 
     @test size(frame_prediction) == size(converted["D"])
     @test all(isfinite, frame_prediction)
     @test frame_prediction == direct_prediction
     @test isapprox(threaded_prediction, frame_prediction; rtol=1e-12, atol=1e-12)
+    @test size(identity_prediction) == size(converted["D"])
+    @test all(isfinite, identity_prediction)
 
     metrics = validate_model(model, [test_frame])
     @test all(isfinite, metrics)

@@ -113,7 +113,8 @@ end
 
 """
     Density_Model(ao_dict::Dict{TP, Dict{String, Any}};
-                  coupling_backend=:old, fixed_particle_number=false) where TP
+                  coupling_backend=:old, fixed_particle_number=false,
+                  radial_mode=:sample) where TP
 
 # Arguments
 - `ao_dict`: a dictionary containing all the metadata needed for constructing a Density_Model
@@ -121,6 +122,8 @@ end
 - `coupling_backend`: coupling-coefficient construction, either `:old` or `:new`
 - `fixed_particle_number`: remove higher-order AA specifications obtained by padding
                            lower-order specifications with fixed-count zero channels
+- `radial_mode`: use the current sampled radial basis (`:sample`) or Legendre
+                 polynomials of linearly rescaled radii with unit envelope (`:identity`)
 
 # Examples
 ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order, "rcut" => rcut, "zcut" => zcut), 
@@ -132,8 +135,13 @@ ao_dict = Dict( 1 => Dict("n_orbs" => [2], "maxdeg" => degree, "ord" => order, "
 model = Density_Model(ao_dict)
 """
 
-function Density_Model(ao_dict::Dict{TP, Dict{String, Any}}; coupling_backend::Symbol = :old, fixed_particle_number::Bool = false) where TP # There is a potential risk that DM tries to convert an unknown type dictionary to a Density_Model
+function Density_Model(ao_dict::Dict{TP, Dict{String, Any}};
+                       coupling_backend::Symbol=:old,
+                       fixed_particle_number::Bool=false,
+                       radial_mode::Symbol=:sample) where TP # There is a potential risk that DM tries to convert an unknown type dictionary to a Density_Model
     coupling_backend = ACEdensitymatrix._normalize_coupling_backend(coupling_backend)
+    radial_mode in (:sample, :identity) ||
+        throw(ArgumentError("radial_mode $radial_mode not implemented"))
     Zs = collect(keys(ao_dict)) |> sort 
     on_classes = classify_ao_dict_on(ao_dict)
     off_classes = classify_ao_dict_off(ao_dict)
@@ -145,26 +153,26 @@ function Density_Model(ao_dict::Dict{TP, Dict{String, Any}}; coupling_backend::S
 
     for zs in on_classes
         onsite_cutoff = haskey(ao_dict[zs[1]], "rcut_on") ? "rcut_on" : "rcut"
-        push!(dict, zs[1] => On_Model(ao_dict[zs[1]]["maxdeg"], ao_dict[zs[1]]["ord"], ao_dict[zs[1]][onsite_cutoff], zs[1], Zs, length(ao_dict[zs[1]]["n_orbs"])-1, ao_dict[zs[1]]["n_orbs"]; coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number))
+        push!(dict, zs[1] => On_Model(ao_dict[zs[1]]["maxdeg"], ao_dict[zs[1]]["ord"], ao_dict[zs[1]][onsite_cutoff], zs[1], Zs, length(ao_dict[zs[1]]["n_orbs"])-1, ao_dict[zs[1]]["n_orbs"]; coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number, radial_mode = radial_mode))
         
         if length(zs) > 1
             AA2BB = Dict("AA2BBmap" => [ dict[zs[1]].model.layers.AA2BB.layers[i].op for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)],
                          "AA2BBpos" => [ dict[zs[1]].model.layers.AA2BB.layers[i].pos for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)])
             for k = 2:length(zs)
-                push!(dict, zs[k] => On_Model(ao_dict[zs[k]]["maxdeg"], ao_dict[zs[k]]["ord"], ao_dict[zs[k]][onsite_cutoff], zs[k], Zs, length(ao_dict[zs[k]]["n_orbs"])-1, ao_dict[zs[k]]["n_orbs"], AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number))
+                push!(dict, zs[k] => On_Model(ao_dict[zs[k]]["maxdeg"], ao_dict[zs[k]]["ord"], ao_dict[zs[k]][onsite_cutoff], zs[k], Zs, length(ao_dict[zs[k]]["n_orbs"])-1, ao_dict[zs[k]]["n_orbs"], AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number, radial_mode = radial_mode))
             end
         end
     end
 
     for zs in off_classes
         offsite_cutoff = haskey(ao_dict[zs[1][1]], "rcut_off") ? "rcut_off" : "rcut"
-        push!(dict, zs[1] => Off_Model(maximum([ao_dict[zs[1][1]]["maxdeg"],ao_dict[zs[1][2]]["maxdeg"]]), maximum([ao_dict[zs[1][1]]["ord"],ao_dict[zs[1][2]]["ord"]]), ao_dict[zs[1][1]][offsite_cutoff], ao_dict[zs[1][2]][offsite_cutoff], maximum([ao_dict[zs[1][1]]["zcut"], ao_dict[zs[1][2]]["zcut"]]), zs[1][1], zs[1][2], Zs, length(ao_dict[zs[1][1]]["n_orbs"])-1, length(ao_dict[zs[1][2]]["n_orbs"])-1, ao_dict[zs[1][1]]["n_orbs"], ao_dict[zs[1][2]]["n_orbs"]; coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number))
+        push!(dict, zs[1] => Off_Model(maximum([ao_dict[zs[1][1]]["maxdeg"],ao_dict[zs[1][2]]["maxdeg"]]), maximum([ao_dict[zs[1][1]]["ord"],ao_dict[zs[1][2]]["ord"]]), ao_dict[zs[1][1]][offsite_cutoff], ao_dict[zs[1][2]][offsite_cutoff], maximum([ao_dict[zs[1][1]]["zcut"], ao_dict[zs[1][2]]["zcut"]]), zs[1][1], zs[1][2], Zs, length(ao_dict[zs[1][1]]["n_orbs"])-1, length(ao_dict[zs[1][2]]["n_orbs"])-1, ao_dict[zs[1][1]]["n_orbs"], ao_dict[zs[1][2]]["n_orbs"]; coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number, radial_mode = radial_mode))
 
         if length(zs) > 1
             AA2BB = Dict("AA2BBmap" => [ dict[zs[1]].model.layers.AA2BB.layers[i].op for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)],
                          "AA2BBpos" => [ dict[zs[1]].model.layers.AA2BB.layers[i].pos for i = 1:length(dict[zs[1]].model.layers.AA2BB.layers)])
             for k = 2:length(zs)
-                push!(dict, zs[k] => Off_Model(maximum([ao_dict[zs[k][1]]["maxdeg"],ao_dict[zs[k][2]]["maxdeg"]]), maximum([ao_dict[zs[k][1]]["ord"],ao_dict[zs[k][2]]["ord"]]), ao_dict[zs[k][1]][offsite_cutoff], ao_dict[zs[k][2]][offsite_cutoff], maximum([ao_dict[zs[k][1]]["zcut"], ao_dict[zs[k][2]]["zcut"]]), zs[k][1], zs[k][2], Zs, length(ao_dict[zs[k][1]]["n_orbs"])-1, length(ao_dict[zs[k][2]]["n_orbs"])-1, ao_dict[zs[k][1]]["n_orbs"], ao_dict[zs[k][2]]["n_orbs"], AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number) )
+                push!(dict, zs[k] => Off_Model(maximum([ao_dict[zs[k][1]]["maxdeg"],ao_dict[zs[k][2]]["maxdeg"]]), maximum([ao_dict[zs[k][1]]["ord"],ao_dict[zs[k][2]]["ord"]]), ao_dict[zs[k][1]][offsite_cutoff], ao_dict[zs[k][2]][offsite_cutoff], maximum([ao_dict[zs[k][1]]["zcut"], ao_dict[zs[k][2]]["zcut"]]), zs[k][1], zs[k][2], Zs, length(ao_dict[zs[k][1]]["n_orbs"])-1, length(ao_dict[zs[k][2]]["n_orbs"])-1, ao_dict[zs[k][1]]["n_orbs"], ao_dict[zs[k][2]]["n_orbs"], AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number, radial_mode = radial_mode) )
             end
         end
     end
@@ -240,12 +248,14 @@ reset_cutoff(model::Density_Model, r_cut_on::Float64, r_cut_off1::Float64, r_cut
 
 function reset_cutoff(model::On_Model, r_cut::Float64, z_cut::Float64)
     degree = model.model.layers.embed.layers.Rn.maxdeg
+    radial_mode = model.model.layers.embed.layers.Rn isa Identity_Onsite_Radial ?
+        :identity : :sample
     r_cut_old = model.model.layers.embed.layers.Rn.rcut
     if r_cut_old == r_cut
         @warn("The cutoff is already set to $r_cut. No change is made.")
         return model
     end
-    Rn_new = onsite_radial_basis(degree, r_cut)
+    Rn_new = onsite_radial_basis(degree, r_cut; radial_mode=radial_mode)
     embed_new = Lux.Parallel(nothing; Rn = Rn_new.Rnl, Ylm = model.model.layers.embed.layers.Ylm, δs = model.model.layers.embed.layers.δs)
     luxchain = Chain(embed = embed_new, A = model.model.layers.A, AA = model.model.layers.AA, AA2BB = model.model.layers.AA2BB, stablize = model.model.layers.stablize, dot = model.model.layers.dot)
 
@@ -255,13 +265,16 @@ end
 
 function reset_cutoff(model::Off_Model, r_cut1::Float64, r_cut2::Float64, z_cut::Float64)
     degree = model.model.layers.embed.layers.Rn.maxdeg
+    radial_mode = model.model.layers.embed.layers.Rn isa Identity_Offsite_Radial ?
+        :identity : :sample
     r_cut_old = try; (model.model.layers.embed.layers.Rn.rcut, model.model.layers.embed.layers.Rn.rcut); catch; (model.model.layers.embed.layers.Rn.rcut1, model.model.layers.embed.layers.Rn.rcut2); end
     z_cut_old = model.model.layers.embed.layers.Rn.zcut
     if r_cut_old == (r_cut1, r_cut2) && z_cut_old == z_cut
         @warn("The cutoffs are already set as is. No change is made.")
         return model
     end
-    Rn_new = offsite_radial_basis(degree, r_cut1, r_cut2, z_cut)
+    Rn_new = offsite_radial_basis(
+        degree, r_cut1, r_cut2, z_cut; radial_mode=radial_mode)
     embed_new = Lux.Parallel(nothing; Rn = Rn_new.Rnl, Ylm = model.model.layers.embed.layers.Ylm, δs = model.model.layers.embed.layers.δs)
     luxchain = Chain(embed = embed_new, A = model.model.layers.A, AA = model.model.layers.AA, AA2BB = model.model.layers.AA2BB, stablize = model.model.layers.stablize, dot = model.model.layers.dot)
 
@@ -276,8 +289,8 @@ replace_stablize(model::On_Model) = On_Model( Chain(embed = model.model.layers.e
 replace_stablize(model::Off_Model) = Off_Model( Chain(embed = model.model.layers.embed, A = model.model.layers.A, AA = model.model.layers.AA, AA2BB = model.model.layers.AA2BB, stablize = WrappedFunction(cc -> real.(cc)), dot = model.model.layers.dot), model.ps, model.st, model.n_orbs1, model.n_orbs2, model.fitted)
 
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
-On_Model(maxdeg::Union{Int64,Vector{Int64}}, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); AA2BB=nothing, coupling_backend::Symbol = :old, fixed_particle_number::Bool = false) where{T} =
-                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial_basis(maximum(maxdeg), rcut),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]), AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number)..., SVector{Lmax+1}(n_orbs),false)
+On_Model(maxdeg::Union{Int64,Vector{Int64}}, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); AA2BB=nothing, coupling_backend::Symbol = :old, fixed_particle_number::Bool = false, radial_mode::Symbol = :sample) where{T} =
+                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial_basis(maximum(maxdeg), rcut; radial_mode = radial_mode),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]), AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number)..., SVector{Lmax+1}(n_orbs),false)
 
 
 # get the categories of a offsite state
@@ -290,11 +303,11 @@ On_Model(maxdeg::Union{Int64,Vector{Int64}}, ord::Int64, rcut::Float64, Zi::T, Z
  end
 
 # An offsite submodel - input is a (local) two-center environment, output is the corresponding offsite block of the density matrix
-Off_Model(maxdeg::Union{Int64,Vector{Int64}}, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing, coupling_backend::Symbol = :old, fixed_particle_number::Bool = false) where {T} =
-                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maximum(maxdeg), rcut, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
+Off_Model(maxdeg::Union{Int64,Vector{Int64}}, ord::Int64, rcut::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing, coupling_backend::Symbol = :old, fixed_particle_number::Bool = false, radial_mode::Symbol = :sample) where {T} =
+                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maximum(maxdeg), rcut, zcut; radial_mode = radial_mode),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
 
-Off_Model(maxdeg::Union{Int64,Vector{Int64}}, ord::Int64, rcut1::Float64, rcut2::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing, coupling_backend::Symbol = :old, fixed_particle_number::Bool = false) where {T} =
-                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maximum(maxdeg), rcut1, rcut2, zcut),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
+Off_Model(maxdeg::Union{Int64,Vector{Int64}}, ord::Int64, rcut1::Float64, rcut2::Float64, zcut::Float64, Zi::T, Zj::T, Zs::Vector{T}, L1::Int64, L2::Int64, n_orbs1::Vector{Int64}=ones(Int64,L1+1), n_orbs2::Vector{Int64}=ones(Int64,L2+1); AA2BB=nothing, coupling_backend::Symbol = :old, fixed_particle_number::Bool = false, radial_mode::Symbol = :sample) where {T} =
+                Off_Model{L1+1,L2+1}(equivariant_operator(maxdeg,ord,offsite_radial_basis(maximum(maxdeg), rcut1, rcut2, zcut; radial_mode = radial_mode),L1,L2,n_orbs1,n_orbs2;categories=union([(Zi,Zj,Zj,true)],unique([(Zi,Zj,Zk,false) for Zk in Zs])),_get_cat = _get_cat_offsite, cat_extension = offsite_extension, AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number)..., SVector{L1+1}(n_orbs1), SVector{L2+1}(n_orbs2), false)
 
 # The above rcut1 and rcut2 could have different meaning
 # in the different choices of offsite environment, in the 
