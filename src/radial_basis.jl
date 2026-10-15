@@ -3,7 +3,10 @@ using Polynomials4ML, Lux
 using Polynomials4ML: AbstractP4MLBasis, AbstractExplicitLayer, lux, natural_indices
 using EquivariantModels: Radial_basis
 
-export onsite_radial_basis, offsite_radial_basis, Sample_Onsite_Radial, Sample_Offsite_Radial, Default_Polynomial_Type
+export onsite_radial_basis, offsite_radial_basis,
+       Sample_Onsite_Radial, Sample_Offsite_Radial,
+       Identity_Onsite_Radial, Identity_Offsite_Radial,
+       Default_Polynomial_Type
 
 const Default_Polynomial_Type = legendre_basis
 
@@ -46,13 +49,47 @@ end
 Sample_Onsite_Radial(maxdeg::Int, rcut::Float64) = Sample_Onsite_Radial(maxdeg, rcut, 2, 2, 2.0, 2)
 get_spec(l::Sample_Onsite_Radial) = natural_indices(Default_Polynomial_Type(l.maxdeg))
 
+struct Identity_Onsite_Radial <: AbstractExplicitLayer
+    maxdeg::Int
+    rcut::Float64
+end
+
+function _identity_coordinate(radius, scale, label)
+    scale > 0 || throw(ArgumentError("$label scale must be positive"))
+    radius <= scale + sqrt(eps(Float64)) * max(scale, 1.0) ||
+        throw(DomainError(radius, "$label radius exceeds its identity-basis scale $scale"))
+    return clamp(2radius / scale - 1, -1.0, 1.0)
+end
+
+(l::Identity_Onsite_Radial)(x::AbstractArray, ps, st) = (l(x), st)
+function (l::Identity_Onsite_Radial)(x::AbstractArray)
+    radial = simple_radial_basis_loc(
+        Default_Polynomial_Type(l.maxdeg), r -> one(r),
+        r -> _identity_coordinate(r, l.rcut, "onsite")).Rnl
+    ps, st = Lux.setup(MersenneTwister(1234), radial)
+    return radial(x, ps, st)[1]
+end
+
+get_spec(l::Identity_Onsite_Radial) = natural_indices(Default_Polynomial_Type(l.maxdeg))
+
 # function onsite_radial(maxdeg::Int64,rcut::Float64; pin::Int=2, pout::Int=2, r0::Float64=2.0, p::Int=2)
 #     # fcut(rcut::Float64,pin::Int=pin,pout::Int=pout) = r -> (r < rcut ? abs( (r/rcut)^pin - 1)^pout : 0)
 #     ftrans(r0::Float64=r0,p::Int=p) = r -> ( (1+r0)/(1+r) )^p
 #     return EquivariantModels.simple_radial_basis_loc(legendre_basis(maxdeg),fcut(rcut),ftrans())
 # end
 
-onsite_radial_basis(maxdeg::Int64,rcut::Float64; pin::Int=2, pout::Int=2, r0::Float64=2.0, p::Int=2) = Radial_basis(Sample_Onsite_Radial(maxdeg, rcut, pin, pout, r0, p), natural_indices(Default_Polynomial_Type(maxdeg)))
+function onsite_radial_basis(maxdeg::Int64, rcut::Float64; pin::Int=2, pout::Int=2,
+                             r0::Float64=2.0, p::Int=2,
+                             radial_mode::Symbol=:sample)
+    layer = if radial_mode === :sample
+        Sample_Onsite_Radial(maxdeg, rcut, pin, pout, r0, p)
+    elseif radial_mode === :identity
+        Identity_Onsite_Radial(maxdeg, rcut)
+    else
+        throw(ArgumentError("radial_mode $radial_mode not implemented"))
+    end
+    return Radial_basis(layer, natural_indices(Default_Polynomial_Type(maxdeg)))
+end
 
 # An example for radial basis for Offsite - decorated as an AbstractExplicitLayer
 
@@ -85,6 +122,37 @@ end
 Sample_Offsite_Radial(maxdeg::Int, rcut::Float64, zcut::Float64) = Sample_Offsite_Radial(maxdeg, rcut, rcut, zcut, 2, 2, 2.0, 2)
 Sample_Offsite_Radial(maxdeg::Int, rcut_I::Float64, rcut_J::Float64, zcut::Float64) = Sample_Offsite_Radial(maxdeg, rcut_I, rcut_J, zcut, 2, 2, 2.0, 2)
 get_spec(l::Sample_Offsite_Radial) = natural_indices(Default_Polynomial_Type(l.maxdeg))
+
+struct Identity_Offsite_Radial <: AbstractExplicitLayer
+    maxdeg::Int
+    rcut1::Float64
+    rcut2::Float64
+    zcut::Float64
+end
+
+(l::Identity_Offsite_Radial)(x::AbstractArray, ps, st) = (l(x), st)
+
+function _identity_offsite_coordinate(l::Identity_Offsite_Radial, state)
+    scale = state.bond ? l.zcut : (l.rcut1 + l.rcut2) / 2
+    radius = state.bond ? norm(state.rr0) : norm(state.rr)
+    return _identity_coordinate(radius, scale, "offsite")
+end
+
+function (l::Identity_Offsite_Radial)(x::AbstractArray)
+    radial = Chain(
+        split=Lux.Parallel(nothing;
+            trans=WrappedFunction(states ->
+                [_identity_offsite_coordinate(l, state) for state in states]),
+            id=WrappedFunction(identity)),
+        evaluation=Lux.Parallel(nothing;
+            poly=lux(Default_Polynomial_Type(l.maxdeg)),
+            cutoff=WrappedFunction(states -> ones(Float64, length(states)))),
+        env=WrappedFunction(parts -> parts[1] .* parts[2]))
+    ps, st = Lux.setup(MersenneTwister(1234), radial)
+    return radial(x, ps, st)[1]
+end
+
+get_spec(l::Identity_Offsite_Radial) = natural_indices(Default_Polynomial_Type(l.maxdeg))
 
 # radial basis for Offsite
 # zcut - cutoff of the bond length
@@ -120,6 +188,20 @@ end
 f_env_offsite_new(r,rbond,be::Bool,rcut::Float64,zcut::Float64,pin::Int=2,pout::Int=2) = f_env_offsite_new(r,rbond,be,rcut,rcut,zcut,pin,pout)
 
 # function offsite_radial_basis(basis::AbstractP4MLBasis,f_cut::Function=r->1,f_trans::Function=r->r; spec = nothing)
-offsite_radial_basis(maxdeg::Int64, rcut_I::Float64, rcut_J::Float64, zcut::Float64; pin::Int=2, pout::Int=2, r0::Float64=2.0, p::Int=2) = Radial_basis(Sample_Offsite_Radial(maxdeg, rcut_I, rcut_J, zcut, pin, pout, r0, p), natural_indices(Default_Polynomial_Type(maxdeg)))
-offsite_radial_basis(maxdeg::Int64, rcut::Float64, zcut::Float64; pin::Int=2, pout::Int=2, r0::Float64=2.0, p::Int=2) = offsite_radial_basis(maxdeg, rcut, rcut, zcut; pin=pin, pout=pout, r0=r0, p=p)
+function offsite_radial_basis(maxdeg::Int64, rcut_I::Float64, rcut_J::Float64,
+                              zcut::Float64; pin::Int=2, pout::Int=2,
+                              r0::Float64=2.0, p::Int=2,
+                              radial_mode::Symbol=:sample)
+    layer = if radial_mode === :sample
+        Sample_Offsite_Radial(maxdeg, rcut_I, rcut_J, zcut, pin, pout, r0, p)
+    elseif radial_mode === :identity
+        Identity_Offsite_Radial(maxdeg, rcut_I, rcut_J, zcut)
+    else
+        throw(ArgumentError("radial_mode $radial_mode not implemented"))
+    end
+    return Radial_basis(layer, natural_indices(Default_Polynomial_Type(maxdeg)))
+end
+
+offsite_radial_basis(maxdeg::Int64, rcut::Float64, zcut::Float64; kwargs...) =
+    offsite_radial_basis(maxdeg, rcut, rcut, zcut; kwargs...)
 # Radial_basis(Sample_Offsite_Radial(maxdeg, rcut, zcut, pin, pout, r0, p), natural_indices(Default_Polynomial_Type(maxdeg)))
