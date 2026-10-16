@@ -180,8 +180,9 @@ function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame;
         atom_idx, ao_idx = index
         ao = model.atom_blocks[atom_idx].ao_blocks[ao_idx]
         block = basis[atom_idx][ao.basis_idx]
+        λ_block = _block_λ(λ, atom_idx, ao_idx)
         ao_coeffs = fit_coeffs(view(block, :, 1:ntrain), view(block, :, ntrain + 1),
-                               view(block, :, ntrain + 2); λ=λ)
+                               view(block, :, ntrain + 2); λ=λ_block)
         ref_target = view(d_refs[atom_idx], ao.rows, ao.cols)
         ao_pred = Matrix(ref_target)
         for (coeff, d) in zip(ao_coeffs, d_trains[atom_idx])
@@ -215,6 +216,112 @@ function extrapolate!(model::ACEDExtModel, train_frames, ref_frame, test_frame;
     diff_ao = sinv_sqrt * (d_pred - d_ref) * sinv_sqrt
     re = norm(diff_ao) / norm(d_ref_ao)
     return (re=re, d_pred=d_pred)
+end
+
+_block_λ(λ::Real, atom_idx, ao_idx) = λ
+_block_λ(λ::AbstractVector{<:AbstractVector}, atom_idx, ao_idx) = λ[atom_idx][ao_idx]
+
+"""
+Minimize f(λ) over λ_bounds: coarse scan in log10 λ, then golden-section
+refinement around the best scan point. Returns the best λ over ALL evaluations.
+"""
+function minimize_log_lambda(f; λ_bounds=(1e-16, 1e2), n_scan=19, xtol=0.02)
+    history = Tuple{Float64,Float64}[]
+    function obj(x)
+        v = f(10.0^x)
+        v = isfinite(v) ? Float64(v) : Inf
+        push!(history, (x, v))
+        return v
+    end
+
+    xs  = collect(range(log10(λ_bounds[1]), log10(λ_bounds[2]); length=n_scan))
+    res = [obj(x) for x in xs]
+    k   = argmin(res)
+
+    lo, hi = xs[max(k - 1, 1)], xs[min(k + 1, n_scan)]
+    φ  = (sqrt(5) - 1) / 2
+    x1 = hi - φ * (hi - lo);  f1 = obj(x1)
+    x2 = lo + φ * (hi - lo);  f2 = obj(x2)
+    while hi - lo > xtol
+        if f1 < f2
+            hi = x2; x2 = x1; f2 = f1
+            x1 = hi - φ * (hi - lo); f1 = obj(x1)
+        else
+            lo = x1; x1 = x2; f1 = f2
+            x2 = lo + φ * (hi - lo); f2 = obj(x2)
+        end
+    end
+
+    xbest, vbest = history[argmin(last.(history))]
+    isinf(vbest) && @warn "All evaluations failed; returned λ is meaningless."
+    return (λ=10.0^xbest, value=vbest,
+            scan=(λ=10.0 .^ xs, value=res),
+            history=[(10.0^x, v) for (x, v) in history],
+            at_boundary=(k == 1 || k == n_scan))
+end
+
+function optimal_lambdas(model::ACEDExtModel, train_frames, ref_frame, test_frame;
+                         λ_bounds=(1e-16, 1e2), n_scan=19, xtol=0.02,
+                         parallel=false, verbose=true)
+    isempty(train_frames) && throw(ArgumentError("at least one training frame is required"))
+    ntrain = length(train_frames)
+
+    basis = basis_values(model, [train_frames; [ref_frame, test_frame]];
+                         parallel=parallel)
+    d_trains = [[get_block(frame["D"], atom.atom_i, atom.atom_j, frame["ao_labels"])
+                 for frame in train_frames] for atom in model.atom_blocks]
+    d_refs   = [get_block(ref_frame["D"], atom.atom_i, atom.atom_j, ref_frame["ao_labels"])
+                for atom in model.atom_blocks]
+    d_tests  = [get_block(test_frame["D"], atom.atom_i, atom.atom_j, test_frame["ao_labels"])
+                for atom in model.atom_blocks]
+
+    indices = [(atom_idx, ao_idx) for atom_idx in eachindex(model.atom_blocks)
+               for ao_idx in eachindex(model.atom_blocks[atom_idx].ao_blocks)]
+
+    results = parallel_map(indices; parallel=parallel) do index
+        atom_idx, ao_idx = index
+        ao    = model.atom_blocks[atom_idx].ao_blocks[ao_idx]
+        block = basis[atom_idx][ao.basis_idx]
+        Btrain = view(block, :, 1:ntrain)
+        bref   = view(block, :, ntrain + 1)
+        btest  = view(block, :, ntrain + 2)
+
+        ref_t  = view(d_refs[atom_idx], ao.rows, ao.cols)
+        true_t = view(d_tests[atom_idx], ao.rows, ao.cols)
+
+        t     = vec(true_t .- ref_t)
+        Δ     = hcat([vec(view(d, ao.rows, ao.cols) .- ref_t) for d in d_trains[atom_idx]]...)
+        tnorm = max(norm(true_t), eps())
+
+        f = λ -> try
+            a = fit_coeffs(Btrain, bref, btest; λ=λ)
+            norm(t - Δ * a) / tnorm
+        catch e
+            (e isa SingularException || e isa PosDefException || e isa LAPACKException) || rethrow()
+            Inf
+        end
+
+        return minimize_log_lambda(f; λ_bounds=λ_bounds, n_scan=n_scan, xtol=xtol)
+    end
+
+    λs  = [zeros(Float64, length(atom.ao_blocks)) for atom in model.atom_blocks]
+    res = [zeros(Float64, length(atom.ao_blocks)) for atom in model.atom_blocks]
+    scans = Dict{Tuple{Int,Int},Any}()
+    for ((atom_idx, ao_idx), r) in zip(indices, results)
+        λs[atom_idx][ao_idx]  = r.λ
+        res[atom_idx][ao_idx] = r.value
+        scans[(atom_idx, ao_idx)] = (scan=r.scan, history=r.history)
+    end
+
+    if verbose
+        flat = reduce(vcat, λs)
+        nbound = count(r -> r.at_boundary, results)
+        println("optimal λ over $(length(flat)) blocks: ",
+                "min=$(minimum(flat)), median=$(sort(flat)[cld(length(flat), 2)]), max=$(maximum(flat))")
+        nbound > 0 && @warn "$nbound blocks have their scan minimum on the boundary of λ_bounds"
+    end
+
+    return (λ=λs, re_blocks=res, indices=indices, scans=scans)
 end
 
 end

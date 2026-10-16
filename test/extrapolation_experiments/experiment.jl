@@ -21,11 +21,10 @@ MOLECULES = ["cytosine", "ethyl_acetate", "glycine", "oxirane", "proline"]
 MOLECULES = ["proline"]
 QS = 5:5:50
 QS = [20]
-NU_DEGREE = [(2, 3), (3, 4), (4, 4)]    # (nu, degree)
-NU_DEGREE = [(2, 3)]
-NFRAMES = 200
+NU_DEGREE = [(2, 3), (3, 4), (4, 4)]
+NFRAMES = 30
 
-λ = 1e-8
+λ = 1e-10
 # Set true when Julia is started with multiple threads; single-threaded BLAS
 # avoids oversubscription of the many independent small QR solves
 PARALLEL = false
@@ -37,7 +36,7 @@ RESULTS_DIR = joinpath(@__DIR__, "results")
 
 # for better comparison, we start the extrapolation at a common frame
 # for every possible value of q
-start_idx = maximum(QS)
+start_idx = maximum(QS) + 2
 
 const METHODS = [
     (name = "ACE_D",
@@ -57,7 +56,6 @@ const METHODS = [
 
 function main()
     for (im, molecule) in enumerate(MOLECULES)
-        # ---------- load or resume results ----------
         path = joinpath(RESULTS_DIR, "$(molecule).json")
         if isfile(path)
             results = JSON.parsefile(path)
@@ -86,9 +84,13 @@ function main()
         # common load frames
         trajectory = TrajectoryHDF5(joinpath(DATA_DIR, "$(molecule).h5"))
         frames = [convert_frame(read_frame(trajectory, i)) for i in 0:(NFRAMES - 1)]
+        info = read_info(trajectory)
+        nocc = div(info["nelectrons"], 2)
         close(trajectory.file)
         meta = frame2meta(first(frames))
         last_idx = length(frames) - 1
+
+        tangent_frame = frames[1]
 
         # reference extrapolation
         for q in QS
@@ -97,11 +99,13 @@ function main()
 
             elapsed = @elapsed begin
                 errs = Float64[]
-                for test_idx in start_idx:last_idx
-                    train_idxs = (test_idx - q):(test_idx - 2)
-                    train_frames = [frames[i + 1] for i in train_idxs]
+                for n in start_idx:last_idx
+                    train_frames = [frames[i] for i in n-q:n-2]
+                    ref_frame = frames[n-1]
+                    test_frame = frames[n]
                     result = RefExtrapolation.extrapolate!(
-                        train_frames, frames[test_idx], frames[test_idx + 1]; λ=λ)
+                        train_frames, ref_frame, test_frame,
+                        λ=λ, tangent_frame=tangent_frame)
                     push!(errs, result.re)
                 end
             end
@@ -149,14 +153,15 @@ function main()
 
                     elapsed = @elapsed begin
                         errs = Float64[]
-                        for test_idx in start_idx:last_idx
-                            if mod(test_idx, 50) == 0
-                                print(" $test_idx")
+                        for n in start_idx:last_idx
+                            if mod(n, 50) == 0
+                                print(" $n")
                             end
-                            train_idxs = (test_idx - q):(test_idx - 2)
-                            train_frames = [frames[i + 1] for i in train_idxs]
-                            result = m.extrapolate!(
-                                model, train_frames, frames[test_idx], frames[test_idx + 1];
+                            train_frames = [frames[i] for i in n-q:n-2]
+                            ref_frame = frames[n-1]
+                            test_frame = frames[n]
+                            result = m.extrapolate!(model,
+                                train_frames, ref_frame, test_frame,
                                 λ=λ, parallel=PARALLEL)
                             push!(errs, result.re)
                         end
