@@ -36,10 +36,10 @@ function optimal_lambda!(train_frames, ref_frame, test_frame;
     transform = HorLiftTangent(nocc)
     set_tangent!(transform, isnothing(tangent_frame) ? ref_frame["C"] : tangent_frame["C"])
 
-    descr_ref       = vec(ref_frame["H"])
-    training_descrs = [vec(f["H"]) for f in train_frames]
+    descr_ref       = vec(ref_frame["Hcore"])
+    training_descrs = [vec(f["Hcore"]) for f in train_frames]
     B               = center_design(hcat(training_descrs...), descr_ref)
-    descr_target    = vec(test_frame["H"]) - descr_ref
+    descr_target    = vec(test_frame["Hcore"]) - descr_ref
 
     gamma_ref = forward_transform(transform, ref_frame["C"])
     gammas    = [forward_transform(transform, f["C"]) for f in train_frames]
@@ -118,12 +118,12 @@ function extrapolate!(train_frames, ref_frame, test_frame; λ=1e-14, tangent_fra
         set_tangent!(transform, tangent_frame["C"])
     end
 
-    descr_ref = vec(ref_frame["H"])
+    descr_ref = vec(ref_frame["Hcore"])
     c = ref_frame["C"]
     gamma_ref = forward_transform(transform, c)
 
     training_descrs = [
-        vec(frame["H"]) for frame in train_frames
+        vec(frame["Hcore"]) for frame in train_frames
     ]
     B = center_design(hcat(training_descrs...), descr_ref)
 
@@ -133,7 +133,7 @@ function extrapolate!(train_frames, ref_frame, test_frame; λ=1e-14, tangent_fra
         push!(gammas, gamma)
     end
 
-    descr_target = vec(test_frame["H"]) - descr_ref
+    descr_target = vec(test_frame["Hcore"]) - descr_ref
     a = fit_coeffs(B, descr_target; λ=λ)
     guess_gamma = (1.0 - sum(a))*copy(gamma_ref)
     for (i, frame) in enumerate(train_frames)

@@ -18,9 +18,11 @@ include(joinpath(@__DIR__, "EXT_ref.jl"))
 import .RefExtrapolation
 
 MOLECULES = ["cytosine", "ethyl_acetate", "glycine", "oxirane", "proline"]
+MOLECULES = ["oxirane"]
 QS = 5:5:50
-NU_DEGREE = [(2, 3), (3, 4), (4, 4)]
-NFRAMES = 200
+QS = [10, 20, 50, 100, 150, 200]
+NU_DEGREE = [(2, 2), (2, 3), (2, 4), (2, 5), (2, 6), (2, 7), (2, 8), (2, 9), (2, 10)]
+NFRAMES = 300
 
 λ = 1e-10
 # Set true when Julia is started with multiple threads; single-threaded BLAS
@@ -156,6 +158,7 @@ function main()
             )
 
             for m in METHODS
+                @show nu, degree
                 model = m.make(spec)
                 for q in QS
                     key = (m.name, q, nu, degree)

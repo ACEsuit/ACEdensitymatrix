@@ -28,10 +28,13 @@ function convert_frame(frame::Dict{String,Array})
     H = copy(frame["Kohn-Sham matrix"])
     H = apply_reorder(frame["Basis set labels"], H; bothsides=true) # Reorder the Hamiltonian
 
+    Hcore = copy(frame["Core Hamiltonian"])
+    Hcore = apply_reorder(frame["Basis set labels"], Hcore; bothsides=true) # Reorder the Core Hamiltonian
+
     S = copy(frame["Overlap"])
     S = apply_reorder(frame["Basis set labels"], S; bothsides=true) # Reorder the Overlap matrix
 
-    return Dict("R"=>R, "D"=>D, "ao_labels"=>frame["Basis set labels"], "atomic_numbers"=>Zs, "H"=>H, "S"=>S, "C"=>C)
+    return Dict("R"=>R, "D"=>D, "ao_labels"=>frame["Basis set labels"], "atomic_numbers"=>Zs, "H"=>H, "S"=>S, "C"=>C, "Hcore"=>Hcore)
 end
 
 function get_state(R,I,J;α=.5,atom_filter = _ -> true)
