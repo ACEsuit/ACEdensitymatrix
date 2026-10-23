@@ -39,7 +39,7 @@ RESULTS_DIR = joinpath(@__DIR__, "results")
 
 # for better comparison, we start the extrapolation at a common frame
 # for every possible value of q
-start_idx = maximum(QS) + 2
+start_idx = maximum(QS) + 1
 
 const METHODS = [
     (name = "ACE_D",
@@ -94,7 +94,7 @@ function main()
         nocc = div(info["nelectrons"], 2)
         close(trajectory.file)
         meta = frame2meta(first(frames))
-        last_idx = length(frames) - 1
+        last_idx = length(frames)
 
         tangent_frame = frames[1]
 
