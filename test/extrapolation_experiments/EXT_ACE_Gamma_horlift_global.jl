@@ -1,6 +1,8 @@
-## Global horizontal-lift extrapolation with onsite ACE descriptors
+## Global horizontal-lift extrapolation with equivariant ACE descriptors
 
-# Stack the onsite (l,0) descriptors for all atoms, without block weights
+# By default, onsite_only=false stacks all onsite and offsite angular blocks
+# Set onsite_only=true to use only the onsite (l,0) descriptors for all atoms
+# Neither mode adds block weights
 # A single coefficient vector solves
 #     sum_i alpha_i (B_i - B_ref) ≈ B_test - B_ref
 # and predicts the entire horizontal lift as
@@ -9,6 +11,10 @@
 # Apply grassmann_exp directly, without projecting gamma_pred
 # q counts q-1 interpolation frames plus the last frame as reference
 
+if !isdefined(@__MODULE__, :ACEDExtrapolation)
+    Base.include(@__MODULE__, joinpath(@__DIR__, "EXT_ACE_D.jl"))
+end
+
 module ACEGammaExtrapolation_Global
 
 using ACEdensitymatrix
@@ -16,6 +22,7 @@ using LinearAlgebra
 using Lux
 using Random
 
+import ..ACEDExtrapolation
 include(joinpath(@__DIR__, "EXT_utils.jl"))
 using .EXTUtils
 
@@ -27,16 +34,25 @@ struct AtomBlock
     basis_idxs::Vector{Int}
 end
 
-mutable struct ACEGammaExtModel_Global
+mutable struct ACEGammaExtModel_Global{M}
     onsite_models::Dict{Int,AbstractModel}
     atom_blocks::Vector{AtomBlock}
+    full_model::M
     coeffs::Vector{Float64}
     trained::Bool
 end
 
 training_size(model::ACEGammaExtModel_Global) = model.trained ? length(model.coeffs) : "model has not been trained"
 
-function ACEGammaExtModel_Global(model_spec; coupling_backend=:new)
+"""Use all atom-pair descriptors by default, or onsite (l,0) blocks with onsite_only=true"""
+function ACEGammaExtModel_Global(model_spec; coupling_backend=:new,
+                                 radial_mode=:sample, onsite_only::Bool=false)
+    if !onsite_only
+        full_model = ACEDExtrapolation.ACEDExtModel(model_spec;
+            coupling_backend=coupling_backend, radial_mode=radial_mode)
+        return ACEGammaExtModel_Global(Dict{Int,AbstractModel}(), AtomBlock[],
+            full_model, Float64[], false)
+    end
     species_dict = model_spec["species"]
     species = sort(collect(keys(species_dict)))
     onsite_models = Dict{Int,AbstractModel}()
@@ -44,7 +60,9 @@ function ACEGammaExtModel_Global(model_spec; coupling_backend=:new)
         spec = species_dict[z]
         rcut = get(spec, "rcut_on", spec["rcut"])
         onsite_models[z] = On_Model(spec["maxdeg"], spec["ord"], rcut, z, species,
-            length(spec["n_orbs"]) - 1, spec["n_orbs"]; coupling_backend=coupling_backend, fixed_particle_number=true)
+            length(spec["n_orbs"]) - 1, spec["n_orbs"];
+            coupling_backend=coupling_backend, fixed_particle_number=true,
+            radial_mode=radial_mode)
     end
 
     layout = ao_block_labels(model_spec["ao_labels"])
@@ -56,11 +74,15 @@ function ACEGammaExtModel_Global(model_spec; coupling_backend=:new)
         basis_idxs = [l * (l2max + 1) + 1 for l in ls]
         push!(atom_blocks, AtomBlock(atom_idx, z, basis_idxs))
     end
-    return ACEGammaExtModel_Global(onsite_models, atom_blocks, Float64[], false)
+    return ACEGammaExtModel_Global(onsite_models, atom_blocks, nothing, Float64[], false)
 end
 
-"""Stack flattened onsite descriptors with one column per configuration"""
+"""Stack onsite-only or full atom-pair descriptors with one column per configuration"""
 function basis_values(model::ACEGammaExtModel_Global, frames; parallel=false)
+    if !isnothing(model.full_model)
+        blocks = ACEDExtrapolation.basis_values(model.full_model, frames; parallel=parallel)
+        return reduce(vcat, [block for atom in blocks for block in atom])
+    end
     atom_vals = parallel_map(model.atom_blocks; parallel=parallel) do atom
         onsite = model.onsite_models[atom.z]
         evaluator = Chain([onsite.model.layers[layer] for layer in 1:5]...)
@@ -85,7 +107,7 @@ gram_mat(model::ACEGammaExtModel_Global, train_frames, ref_frame; λ=0) =
     regularized_gram(design_mat(model, train_frames, ref_frame); λ=λ)
 
 function extrapolate!(model::ACEGammaExtModel_Global, train_frames, ref_frame, test_frame;
-                      λ=1e-14, parallel=false)
+                      nocc=round(Int, tr(ref_frame["D"])), λ=1e-14, parallel=false)
     isempty(train_frames) && throw(ArgumentError("at least one interpolation frame is required"))
     ntrain = length(train_frames)
     basis = basis_values(model, [train_frames; [ref_frame, test_frame]]; parallel=parallel)
@@ -93,7 +115,6 @@ function extrapolate!(model::ACEGammaExtModel_Global, train_frames, ref_frame, t
     target = basis[:, ntrain + 2] - basis[:, ntrain + 1]
     coeffs = fit_coeffs(design, target; λ=λ)
 
-    nocc = Int(sum(test_frame["atomic_numbers"]) / 2)
     origin = view(ref_frame["C"], :, 1:nocc)
     gamma_pred = zeros(Float64, size(origin))
     for (coeff, frame) in zip(coeffs, train_frames)
@@ -129,6 +150,8 @@ if abspath(PROGRAM_FILE) == @__FILE__
     nwindows = 80
     λ = 1e-14
     rcut = 6.5
+    zcut = 10.0
+    onsite_only = false
     parallel = false
     data_file = joinpath(@__DIR__, "..", "..", "data", "new_datasets", "oxirane.h5")
 
@@ -142,23 +165,23 @@ if abspath(PROGRAM_FILE) == @__FILE__
     meta = frame2meta(first(frames))
     model_spec = Dict{String,Any}(
         "species" => Dict(z => Dict{String,Any}("n_orbs" => n_orb, "maxdeg" => degree,
-            "ord" => nu, "rcut" => rcut) for (z, n_orb) in zip(meta.species, meta.n_orbs)),
+            "ord" => nu, "rcut" => rcut, "zcut" => zcut) for (z, n_orb) in zip(meta.species, meta.n_orbs)),
         "atomic_numbers" => meta.atomic_numbers, "ao_labels" => meta.ao_labels)
-    model = ACEGammaExtModel_Global(model_spec)
+    model = ACEGammaExtModel_Global(model_spec; onsite_only=onsite_only)
 
     errors = Float64[]
     tan_residuals = Float64[]
     design_norms = Float64[]
     descriptor_residuals = Float64[]
-    for test_idx in q:last_idx
-        train_frames = frames[(test_idx - q + 1):(test_idx - 1)]
-        result = extrapolate!(model, train_frames, frames[test_idx], frames[test_idx + 1];
-                              λ=λ, parallel=parallel)
+    for test_col in (q + 1):length(frames)
+        train_frames = frames[(test_col - q):(test_col - 2)]
+        result = extrapolate!(model, train_frames, frames[test_col - 1], frames[test_col];
+                              nocc=nocc, λ=λ, parallel=parallel)
         push!(errors, result.re)
         push!(tan_residuals, result.tan_res)
         push!(design_norms, result.design_norm)
         push!(descriptor_residuals, result.descriptor_res)
-        println("frame=$test_idx RE=$(result.re) tangent_residual=$(result.tan_res)")
+        println("frame=$(test_col - 1) RE=$(result.re) tangent_residual=$(result.tan_res)")
     end
     println("Global horizontal lift: nu=$nu degree=$degree q=$q mean_RE=$(mean(errors))")
     println("max_tangent_residual=$(maximum(tan_residuals)) design_norm_range=$(extrema(design_norms))")
@@ -168,8 +191,8 @@ if abspath(PROGRAM_FILE) == @__FILE__
     result_file = joinpath(@__DIR__, "gamma_horlift_global_nu$(nu)_degree$(degree)_q$(q)_results.csv")
     open(result_file, "w") do io
         println(io, "frame,re,tangent_residual,design_norm,descriptor_residual")
-        for (i, test_idx) in enumerate(q:last_idx)
-            println(io, join((test_idx, errors[i], tan_residuals[i], design_norms[i], descriptor_residuals[i]), ','))
+        for (i, test_col) in enumerate((q + 1):length(frames))
+            println(io, join((test_col - 1, errors[i], tan_residuals[i], design_norms[i], descriptor_residuals[i]), ','))
         end
     end
 end
