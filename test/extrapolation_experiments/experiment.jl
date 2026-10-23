@@ -8,6 +8,9 @@ using .EXTUtils
 include(joinpath(@__DIR__, "EXT_ACE_D.jl"))
 import .ACEDExtrapolation
 
+include(joinpath(@__DIR__, "EXT_ACE_D_global.jl"))
+import .ACEDExtrapolation_Global
+
 include(joinpath(@__DIR__, "EXT_ACE_Gamma.jl"))
 import .ACEGammaExtrapolation
 
@@ -46,6 +49,9 @@ const METHODS = [
      make = spec -> ACEDExtrapolation.ACEDExtModel(
          spec; coupling_backend=:new, radial_mode=:identity),
      extrapolate! = ACEDExtrapolation.extrapolate!),
+    (name = "ACE_D_global",
+     make = spec -> ACEDExtrapolation_Global.ACEDExtModel_Global(spec),
+     extrapolate! = ACEDExtrapolation_Global.extrapolate!),
     (name = "ACE_Gamma",
      make = spec -> ACEGammaExtrapolation.ACEGammaExtModel(spec; coupling_backend=:new),
      extrapolate! = ACEGammaExtrapolation.extrapolate!),
@@ -126,7 +132,7 @@ function main()
                     n_done, n_total, "ref", q, "", elapsed)
         end
 
-        # three ACE-based extrapolations
+        # five ACE-based extrapolations (six methods including the reference)
         for (nu, degree) in NU_DEGREE
             keys_nd = [(m.name, q, nu, degree) for m in METHODS for q in QS]
             all(in(done), keys_nd) && continue
