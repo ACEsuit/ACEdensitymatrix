@@ -290,7 +290,7 @@ replace_stablize(model::Off_Model) = Off_Model( Chain(embed = model.model.layers
 
 # An onsite submodel - input is a (local) one center environment, output is the corresponding onsite block of the density matrix
 On_Model(maxdeg::Union{Int64,Vector{Int64}}, ord::Int64, rcut::Float64, Zi::T, Zs::Vector{T}, Lmax::Int64, n_orbs::Vector{Int64}=ones(Int64,Lmax+1); AA2BB=nothing, coupling_backend::Symbol = :old, fixed_particle_number::Bool = false, radial_mode::Symbol = :sample) where{T} =
-                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial_basis(maximum(maxdeg), rcut; radial_mode = radial_mode),Lmax,n_orbs;categories=unique([(Zi,Z) for Z in Zs]), AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number)..., SVector{Lmax+1}(n_orbs),false)
+                On_Model{Lmax+1}(equivariant_operator(maxdeg,ord,onsite_radial_basis(maximum(maxdeg), rcut; radial_mode = radial_mode),Lmax,n_orbs;categories=SVector(Tuple(unique([(Zi, Z) for Z in Zs]))), AA2BB = AA2BB, coupling_backend = coupling_backend, fixed_particle_number = fixed_particle_number)..., SVector{Lmax+1}(n_orbs),false)
 
 
 # get the categories of a offsite state
